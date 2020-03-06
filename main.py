@@ -2,8 +2,9 @@
 #created by SamLee 2020/3/6
 import sys
 import os
-import tools
+import zipfile
 import optparse
+import tools
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
@@ -19,6 +20,9 @@ if __name__ == '__main__':
     #print(args)
     if not args:
         print('没有指定apk文件')
+        sys.exit()
+    if not zipfile.is_zipfile(args[0]):
+        print('{} 不是apk文件'.format(args[0]))
         sys.exit()
     if options.viewKey:
         rc4Key = tools.extractRC4KeyFromApk(args[0])
