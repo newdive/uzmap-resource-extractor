@@ -24,12 +24,13 @@ def extractRC4Key(soFile):
 
     with soFile as f:
         elffile = ELFFile(f)
+        littleEndian = elffile.little_endian
         dataSection,dataContent = elffile.get_section_by_name('.rodata'),None
         if dataSection:
             dataContent = dataSection.data()
         if dataContent and len(dataContent)>208+33+36:
             #little endian bytes
-            keyIdx = [struct.unpack('<I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
+            keyIdx = [struct.unpack('<I' if littleEndian else '>I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
             keyStr = dataContent[208+33:208+33+36].replace(b'\x00',b'').decode('utf-8')
     return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
 
@@ -139,27 +140,31 @@ def extractRC4KeyFromApk(apkFilePath):
         return None
     with zipfile.ZipFile(apkFilePath) as apkFile:
         apkResList = apkFile.namelist()
-        soFile = None
+        soFiles = []
         for fname in apkResList:
             if fname.startswith('lib/') and fname.endswith('libsec.so'):
-                soFile = fname
-                break
-        if not soFile:
+                with apkFile.open(fname) as soContent:
+                    elfHeader = soContent.read(6)
+                    #check elffile format(https://en.wikipedia.org/wiki/Executable_and_Linkable_Format)
+                    if elfHeader[1]==ord('E') and elfHeader[2]==ord('L') and elfHeader[3]==ord('F'):
+                        soFiles.append(fname)
+        if not soFiles:
             print('libsec.so file not exists in apk file')
             return None
-        with apkFile.open(soFile,'r') as soContent:
-            soTmp = None
-            if not soContent.seekable():
-                soTmp = tempfile.mkstemp('.tmp','tmp',os.path.dirname(os.path.abspath(apkFilePath)))
-                with open(soTmp[1],'wb') as soTmpC:
-                    shutil.copyfileobj(soContent,soTmpC)
-                soContent.close()
-                soContent = open(soTmp[1],'rb')
-            rc4Key = extractRC4Key(soContent)
-            if soTmp:
-                os.close(soTmp[0])
-                os.remove(soTmp[1])
-            return rc4Key
+        for soFile in soFiles:
+            with apkFile.open(soFile,'r') as soContent:
+                soTmp = None
+                if not soContent.seekable():
+                    soTmp = tempfile.mkstemp('.tmp','tmp',os.path.dirname(os.path.abspath(apkFilePath)))
+                    with open(soTmp[1],'wb') as soTmpC:
+                        shutil.copyfileobj(soContent,soTmpC)
+                    soContent.close()
+                    soContent = open(soTmp[1],'rb')
+                rc4Key = extractRC4Key(soContent)
+                if soTmp:
+                    os.close(soTmp[0])
+                    os.remove(soTmp[1])
+                return rc4Key
     return None
 
 def iterateAllNeedDecryptAssets(apkFilePath):
