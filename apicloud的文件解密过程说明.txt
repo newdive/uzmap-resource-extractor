@@ -1,0 +1,35 @@
+文件的解密入口定义在 WebViewClient中的 shouldInterceptRequest方法
+在apiCloud中对应的类为 com.uzmap.pkg.uzcore.h.d  对应的方法定义如下
+    public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+        if (!this.b) {
+            return super.shouldInterceptRequest(view, url);
+        }
+        String d = b.d(url);
+        if (!b.e(d)) {
+            return b(url, d);
+        }
+        WebResourceResponse a = a(url, d);
+        return a == null ? super.shouldInterceptRequest(view, url) : a;
+    }
+其中 this.b 的值决定了 是否使用解密 
+(this.b的值对应于 compile.Properties.smode() 具体可以参考 com.uzmap.pkg.uzcore.h.f.y()方法 如下
+    public void y() {
+        setNetworkAvailable(true);
+        d B = B();
+        boolean z = B.q;        ===>  这个值决定了是否进行资源文件的解密
+        String j = B.j();
+        com.uzmap.pkg.a.k.e.a((WebView) this, z);
+        a a = a.a(this.f);
+        a.a((b) this);
+        setWebChromeClient(a);
+        setWebViewClient(c.a(this.f, z, j));
+        this.g = new com.uzmap.pkg.uzcore.uzmodule.c(this);
+        this.g.a(z, j);
+    }
+    B.q的值在 com.uzmap.pkg.uzcore.b.e.a(InputStream , boolean) 和 com.uzmap.pkg.uzcore.r.y() 这里两个方法中进行设置
+    通过分析得出最终取决于 compile.Properties.smode()的值
+)
+当 this.b = false 时候不使用解密  即此时对应的资源文件没有加密
+否则 则判断是否为 html,js,css的文件类型再进行相应的解密处理
+
+

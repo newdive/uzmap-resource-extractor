@@ -32,6 +32,8 @@ def extractRC4Key(soFile):
             #little endian bytes
             keyIdx = [struct.unpack('<I' if littleEndian else '>I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
             keyStr = dataContent[208+33:208+33+36].replace(b'\x00',b'').decode('utf-8')
+    #print(keyIdx)
+    #print(keyStr)
     return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
 
 #sample data for rc4 key data source (not the rc4 key itself)
@@ -178,12 +180,37 @@ def iterateAllNeedDecryptAssets(apkFilePath):
                 if needDecryptFile(resName):
                     yield resName,apkFile.open(resName)
 
+def isResourceEncrypted(apkFilePath):
+'''
+可以通过判断 apk 中的类 compile.Properties.smode 的值 ： true表示有加密 false表示未加密
+但目前没办法直接通过解析 apk的字节码来判断对应类方法的返回值，所以先简单的从 assets/widget/config.xml 文件进行判断
+app第一个需要解密的文件是config.xml，如果这个文件没有加密 则说明其它文件也一样没有加密  反之亦然
+'''
+    if not os.path.exists(apkFilePath):
+        print('{} does not exists'.format(apkFilePath))
+        return False
+    confFile = 'assets/widget/config.xml'
+    rawXmlFileHead = '<?xml'.encode('utf-8')
+    with zipfile.ZipFile(apkFilePath) as apkFile:
+        confFileBytes = None
+        try:
+            confFileBytes = apkFile.open(confFile).read()
+        except:
+            pass
+        if not confFileBytes:
+            print('{} does not exists in apk'.format(confFile))
+            return False
+        return confFileBytes.find(rawXmlFileHead) == -1
+
 def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
-    rc4Key = extractRC4KeyFromApk(apkFilePath)
-    if not rc4Key:
-        if printLog:
-            print('fail to extract rc4 key')
-        return None
+    resEncrypted = isResourceEncrypted(apkFilePath)
+    rc4Key = None
+    if resEncrypted:
+        rc4Key = extractRC4KeyFromApk(apkFilePath)
+        if not rc4Key:
+            if printLog:
+                print('fail to extract rc4 key')
+            return None
     allAssets = iterateAllNeedDecryptAssets(apkFilePath)
     decryptMap = {}
     if allAssets:
@@ -200,7 +227,7 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
             if not assetFile:
                 break
             fName,fileContent = assetFile
-            decContent = decrypt(fileContent.read(),rc4Key=rc4Key)
+            decContent = decrypt(fileContent.read(),rc4Key=rc4Key) if resEncrypted else fileContent.read()
             fileContent.close()
             resDecrypted = '{}/{}'.format(storeFolder,fName)
             decryptMap[fName] = resDecrypted 
