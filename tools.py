@@ -181,11 +181,11 @@ def iterateAllNeedDecryptAssets(apkFilePath):
                     yield resName,apkFile.open(resName)
 
 def isResourceEncrypted(apkFilePath):
-'''
-可以通过判断 apk 中的类 compile.Properties.smode 的值 ： true表示有加密 false表示未加密
-但目前没办法直接通过解析 apk的字节码来判断对应类方法的返回值，所以先简单的从 assets/widget/config.xml 文件进行判断
-app第一个需要解密的文件是config.xml，如果这个文件没有加密 则说明其它文件也一样没有加密  反之亦然
-'''
+    '''
+    可以通过判断 apk 中的类 compile.Properties.smode 的值 ： true表示有加密 false表示未加密
+    但目前没办法直接通过解析 apk的字节码来判断对应类方法的返回值，所以先简单的从 assets/widget/config.xml 文件进行判断
+    app第一个需要解密的文件是config.xml，如果这个文件没有加密 则说明其它文件也一样没有加密  反之亦然
+    '''
     if not os.path.exists(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
         return False
