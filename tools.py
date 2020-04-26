@@ -9,7 +9,7 @@ import zipfile
 import tempfile
 import shutil
 import struct
-
+import entropy
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
 0:20*4 byte 数据的取值
@@ -202,6 +202,14 @@ def isResourceEncrypted(apkFilePath):
             return False
         return confFileBytes.find(rawXmlFileHead) == -1
 
+'''
+判断熵的大小 一般加密的文件熵都超过0.9
+(媒体文件除外，媒体文件的熵一般都在0.8-1之间)
+'''
+def isVeryLikelyEncrypted(dataBytes):
+    entropyValue = entropy.shannonEntropy(dataBytes) if len(dataBytes)<=512 else entropy.gzipEntropy(dataBytes)
+    return entropyValue>=0.9
+
 def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
     resEncrypted = isResourceEncrypted(apkFilePath)
     rc4Key = None
@@ -227,7 +235,8 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
             if not assetFile:
                 break
             fName,fileContent = assetFile
-            decContent = decrypt(fileContent.read(),rc4Key=rc4Key) if resEncrypted else fileContent.read()
+            rawContent = fileContent.read()
+            decContent = decrypt(rawContent,rc4Key=rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent
             fileContent.close()
             resDecrypted = '{}/{}'.format(storeFolder,fName)
             decryptMap[fName] = resDecrypted 
