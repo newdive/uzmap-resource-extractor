@@ -12,12 +12,21 @@ import struct
 import entropy
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
-0:20*4 byte 数据的取值
+0:20*4 byte 数据映射的取值
+
 208:208+33 apk的签名串 用于校验
 208+33: 208+33+9*4 为key数据 分4段存储 需要合并处理
+2020/4/26 
+jni注册使用的类名字符串常量 "com/uzmap/pkg/uzcore/external/Enslecb"
+这个字符串常量之前的 9byte 1段的4段数据 还有33 byte的apk签名串
+之前固定位置的方式对有些不适用
+
 得到key数据在利用 [0:20]byte的索引数组取出20byte的key值
 '''
+JNI_PACKAGE_BYTES = 'com/uzmap/pkg/uzcore/external/Enslecb'.encode('utf-8')
+
 def extractRC4Key(soFile):
+    global JNI_PACKAGE_BYTES
     keyStr,keyIdx = None,None
     if isinstance(soFile,str):
         soFile = open(soFile,'rb') if os.path.exists(soFile) else None
@@ -28,10 +37,11 @@ def extractRC4Key(soFile):
         dataSection,dataContent = elffile.get_section_by_name('.rodata'),None
         if dataSection:
             dataContent = dataSection.data()
-        if dataContent and len(dataContent)>208+33+36:
+        if dataContent and dataContent.find(JNI_PACKAGE_BYTES)>=80+9*4:
+            pkgIdx = dataContent.find(JNI_PACKAGE_BYTES)
             #little endian bytes
             keyIdx = [struct.unpack('<I' if littleEndian else '>I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
-            keyStr = dataContent[208+33:208+33+36].replace(b'\x00',b'').decode('utf-8')
+            keyStr = dataContent[pkgIdx-9*4:pkgIdx].replace(b'\x00',b'').decode('utf-8')
     #print(keyIdx)
     #print(keyStr)
     return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
