@@ -12,7 +12,7 @@
 目前只支持python3
 
 ### Setup ###
-先安装项目的依赖(需要用到 pyelftools)
+先安装项目的依赖
 ```
 pip install requirements
 ```
