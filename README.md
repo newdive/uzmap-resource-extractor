@@ -10,6 +10,13 @@
 <br>这个工具仅供个人研究学习使用。 其它非法用途所造成的法律责任，一律与本项目无关。
 ### Note ###
 目前只支持python3
+
+### Setup ###
+先安装项目的依赖(需要用到 pyelftools)
+```
+pip install requirements
+```
+
 ### Usage ###
 ```
 python main.py xxx.apk
