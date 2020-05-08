@@ -6,6 +6,10 @@ import zipfile
 import optparse
 import tools
 
+if sys.version_info[0] < 3:
+    print(u"当前的Python版本: {}。该程序只能在Python3.x下运行。".format(sys.version.split(' ')[0]))
+    sys.exit(1)
+
 if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('-o','--output',
