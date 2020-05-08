@@ -99,7 +99,7 @@ def decrypt(dataBytes,statisticsOut=None,rc4Key=None):
     return bytes(bytearray(decDataBytes)) if isinstance(dataBytes,bytes) else bytearray(decDataBytes) if isinstance(dataBytes,bytearray) else decDataBytes
 
 '''
-只有 js html css config.xml key.xml 进行了加密 其他文件没有 不许要解密
+只有 js html css config.xml key.xml 进行了加密 其他文件没有 不需要解密
 '''
 enc_exts = ['js','html','css']
 def needDecryptFile(fileName):
