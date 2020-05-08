@@ -10,6 +10,7 @@ import tempfile
 import shutil
 import struct
 import entropy
+
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
 0:20*4 byte 数据映射的取值
@@ -146,6 +147,10 @@ def decryptResourceFiles(folder,statisticsOut=None):
                 continue
             print('decrypt:{} => {}'.format(tFile,saveTo))
 
+#python3.7.0 zipfile '_SharedFile'.seek calls 'writing' method instead of '_writing' 
+def isBuggyZipfile():
+    return sys.version_info.major==3 and sys.version_info.minor==7 and sys.version_info.micro<1
+
 def extractRC4KeyFromApk(apkFilePath):
     if not os.path.exists(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
@@ -166,7 +171,7 @@ def extractRC4KeyFromApk(apkFilePath):
         for soFile in soFiles:
             with apkFile.open(soFile,'r') as soContent:
                 soTmp = None
-                if not soContent.seekable():
+                if not soContent.seekable() or isBuggyZipfile():
                     soTmp = tempfile.mkstemp('.tmp','tmp',os.path.dirname(os.path.abspath(apkFilePath)))
                     with open(soTmp[1],'wb') as soTmpC:
                         shutil.copyfileobj(soContent,soTmpC)
