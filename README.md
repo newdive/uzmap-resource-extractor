@@ -1,6 +1,6 @@
 # uzmap-resource-extractor
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
-![Python 3.7](https://img.shields.io/badge/python-3.6-blue.svg)
+![Python 2.7](https://img.shields.io/badge/python-2.7-blue.svg)
 
 <br><u>用于解密和提取apicloud apk下的资源文件(html, js ,css)</u>
 ### 背景&说明 ###
