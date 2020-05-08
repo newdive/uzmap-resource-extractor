@@ -23,7 +23,7 @@ this method is fast, in the cost of some accuracy(not as good as shanno formula)
 '''
 def gzipEntropy(dataBytes):
     if isinstance(dataBytes,type('')):
-        dataBytes = bytes(dataBytes,'latin1')
+        dataBytes = bytes(dataBytes)
 
     e = float(float(len(zlib.compress(dataBytes, 9))) / float(len(dataBytes)))
 
