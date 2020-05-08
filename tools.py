@@ -61,7 +61,7 @@ def computeRC4KeyMap(rc4Key=None):
     preKey = rc4Key
     if rc4Key is None or isinstance(rc4Key,tuple):
         preKey = getPreKey(rc4Key[0] if rc4Key else None,rc4Key[1] if rc4Key else None)
-    blockA = [ord(a) for a in ( preKey*(math.ceil(256/len(preKey))) )[0:256]]
+    blockA = [ord(a) for a in ( preKey*( int(math.ceil(256.0/len(preKey))) ) )[0:256]]
     blockB = [i for i in range(256)]
     reg2 = 0
     for i in range(256):
@@ -74,7 +74,7 @@ def computeRC4KeyMap(rc4Key=None):
     return blockB
 
 def decrypt(dataBytes,statisticsOut=None,rc4Key=None):
-    decDataBytes = [b for b in dataBytes]
+    decDataBytes = [ord(b) for b in dataBytes]
     keyMap = computeRC4KeyMap(rc4Key)
     R3,R4 = 0, 0
     for i in range(len(decDataBytes)):
@@ -99,7 +99,7 @@ def decrypt(dataBytes,statisticsOut=None,rc4Key=None):
     return bytes(bytearray(decDataBytes)) if isinstance(dataBytes,bytes) else bytearray(decDataBytes) if isinstance(dataBytes,bytearray) else decDataBytes
 
 '''
-只有 js html css config.xml key.xml 进行了加密 其他文件没有 不许要解密
+只有 js html css config.xml key.xml 进行了加密 其他文件没有 不需要解密
 '''
 enc_exts = ['js','html','css']
 def needDecryptFile(fileName):
@@ -147,10 +147,6 @@ def decryptResourceFiles(folder,statisticsOut=None):
                 continue
             print('decrypt:{} => {}'.format(tFile,saveTo))
 
-#python3.7.0 zipfile '_SharedFile'.seek calls 'writing' method instead of '_writing' 
-def isBuggyZipfile():
-    return sys.version_info.major==3 and sys.version_info.minor==7 and sys.version_info.micro<1
-
 def extractRC4KeyFromApk(apkFilePath):
     if not os.path.exists(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
@@ -163,7 +159,7 @@ def extractRC4KeyFromApk(apkFilePath):
                 with apkFile.open(fname) as soContent:
                     elfHeader = soContent.read(6)
                     #check elffile format(https://en.wikipedia.org/wiki/Executable_and_Linkable_Format)
-                    if elfHeader[1]==ord('E') and elfHeader[2]==ord('L') and elfHeader[3]==ord('F'):
+                    if ord(elfHeader[1])==ord('E') and ord(elfHeader[2])==ord('L') and ord(elfHeader[3])==ord('F'):
                         soFiles.append(fname)
         if not soFiles:
             print('libsec.so file not exists in apk file')
