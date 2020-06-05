@@ -95,42 +95,19 @@ def _scanAPICloudApks(procPool,msgQueue,resourcePath,extractRC4Key=False,printLo
     return apkInfoMap
     
 def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
-    
-    '''
-    def decHandle(procPool,msgQueue,apkInfoMap,saveTo,globalStates):
-        for apkPath,apkInfo in apkInfoMap.items():
-            saveApkPath = determineSavePath(apkPath,saveTo)
-            procPool.apply_async(_decryptAPICloudApkResources,args=(apkPath,saveApkPath,msgQueue))
-    decTh = threading.Thread(target=decHandle,args=(procPool,msgQueue,apkInfoMap,saveTo,globalStates))
-    decTh.start()
-    '''
-
-    globalStates = {'processedFiles':0}
-    
+ 
     totalApks = len(apkInfoMap)
     decApkMap = {}
     for apkPath,apkInfo in apkInfoMap.items():
+        if printLog:
+            print(apkPath)
         saveApkPath = determineSavePath(apkPath,saveTo)
         decMap = uzm_util.decryptAllResourcesInApkParallel(apkPath,saveApkPath,printLog,procPool=procPool,msgQueue=msgQueue)
         decApkMap[apkPath] = (saveApkPath,decMap)
         if printLog:
-            print(apkPath)
             print('\t=>{}'.format(saveApkPath))
             print('\t{} files decrypted.'.format(len(decMap)))
-    '''
-    while globalStates['processedFiles']<totalApks:
-        if msgQueue.empty():
-            time.sleep(0.01)
-            continue
-        apkFile,saveTo,decResult = msgQueue.get_nowait()
-        decApkMap[apkFile] = (saveTo,decResult)
-        globalStates['processedFiles'] += 1
-        msgQueue.task_done()
-        if printLog:
-            print(apkFile)
-            print('\t=>{}'.format(saveTo))
-            print('\t{} files decrypted.'.format(len(decResult)))
-    '''
+            print('\n')
     return decApkMap
 
 '''

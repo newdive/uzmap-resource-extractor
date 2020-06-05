@@ -320,7 +320,7 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
         globalStates = {'submittedFiles':0,'processedFiles':0,'submitCompleted':False}
         subTh = threading.Thread(target=subHandle,args=(allAssets,rc4Key,resEncrypted,procPool,msgQueue,globalStates))
         subTh.start()
-        print()
+
         while True:
             if globalStates['submitCompleted'] and globalStates['processedFiles']>=globalStates['submittedFiles']:
                 break
