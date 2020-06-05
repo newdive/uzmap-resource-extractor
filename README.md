@@ -34,6 +34,14 @@ python main.py -h
 - 查看apk中的rc4密钥
 
   ```python main.py -v xxx.apk ```
+    
+  输出信息说明
+   ```
+        package      : xxx.ooo.xxx              ==> 应用包名
+        uz_version   : 1.3.13                   ==> apicloud engine的版本号
+        encrypted    : False                    ==> 资源是否加密
+        rc4Key       : xxxxxxxxxxxxxxxxxxxx     ==> 资源加密用到的RC4密钥
+    ```
 
 - 解密并提取所有的资源文件(如果不指明输出路径 默认输出到apk所在的文件夹下)
 
