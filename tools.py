@@ -1,262 +1,166 @@
 #coding=utf-8
-#created by SamLee 2020/3/6
+#created by SamLee 2020/6/6
 
 import os
 import sys
-import math
-from elftools.elf.elffile import ELFFile
-import zipfile
-import tempfile
-import shutil
-import struct
-import entropy
+import multiprocessing
+import threading
+import time
+import datetime
+import apk_util
+import uzm_util
+
+def determineSavePath(apkPath,saveTo):
+    saveTo = saveTo.strip()
+    apkName = os.path.basename(apkPath)
+    if not saveTo:
+        saveTo = os.path.dirname(apkPath)
+    if '.' in apkName:
+        apkName = apkName[0:apkName.rfind('.')]
+    saveApkPath = '{}/{}'.format(saveTo,apkName)
+    #in order to avoid conflict , add a timestamp to saveApkPath
+    if os.path.exists(saveApkPath):
+        saveApkPath = '{}_{}'.format(saveApkPath,datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    return saveApkPath
 
 '''
-文件使用rc4算法进行加密 rc4的key数据定义在rodata中
-0:20*4 byte 数据映射的取值
-
-208:208+33 apk的签名串 用于校验
-208+33: 208+33+9*4 为key数据 分4段存储 需要合并处理
-2020/4/26 
-jni注册使用的类名字符串常量 "com/uzmap/pkg/uzcore/external/Enslecb"
-这个字符串常量之前的 9byte 1段的4段数据 还有33 byte的apk签名串
-之前固定位置的方式对有些不适用
-
-得到key数据在利用 [0:20]byte的索引数组取出20byte的key值
+旧api
+对apicloud的apk进行资源的解密提取 
 '''
-JNI_PACKAGE_BYTES = 'com/uzmap/pkg/uzcore/external/Enslecb'.encode('utf-8')
-
-def extractRC4Key(soFile):
-    global JNI_PACKAGE_BYTES
-    keyStr,keyIdx = None,None
-    if isinstance(soFile,str):
-        soFile = open(soFile,'rb') if os.path.exists(soFile) else None
-
-    with soFile as f:
-        elffile = ELFFile(f)
-        littleEndian = elffile.little_endian
-        dataSection,dataContent = elffile.get_section_by_name('.rodata'),None
-        if dataSection:
-            dataContent = dataSection.data()
-        if dataContent and dataContent.find(JNI_PACKAGE_BYTES)>=80+9*4:
-            pkgIdx = dataContent.find(JNI_PACKAGE_BYTES)
-            #little endian bytes
-            keyIdx = [struct.unpack('<I' if littleEndian else '>I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
-            keyStr = dataContent[pkgIdx-9*4:pkgIdx].replace(b'\x00',b'').decode('utf-8')
-    #print(keyIdx)
-    #print(keyStr)
-    return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
-
-#sample data for rc4 key data source (not the rc4 key itself)
-preKeyIdx = [0x13,0x6,0x1f,0xa,0x8,0x12,0x3,0x16,0xb,0x0,0x12,0xc,0x19,0x6,0x12,0x9,0xe,0x2,0x17,0x1a]
-rawKeyData = '988f520873542ac4a8df3cbfa8937024'
-
-def getPreKey(rawKey=None,keyIdxArr=None):
-    global rawKeyData,preKeyIdx
-    if rawKey is None:
-        rawKey,keyIdxArr = rawKeyData,preKeyIdx
-    return ''.join([rawKey[idx] for idx in keyIdxArr])
-
-def computeRC4KeyMap(rc4Key=None):
-    preKey = rc4Key
-    if rc4Key is None or isinstance(rc4Key,tuple):
-        preKey = getPreKey(rc4Key[0] if rc4Key else None,rc4Key[1] if rc4Key else None)
-    blockA = [ord(a) for a in ( preKey*( int(math.ceil(256.0/len(preKey))) ) )[0:256]]
-    blockB = [i for i in range(256)]
-    reg2 = 0
-    for i in range(256):
-        reg3 = blockB[i]
-        reg2 += blockA[i] + blockB[i]
-        reg6 = (((reg2>>0x1F) >> 0x18) + reg2) & 0xFFFFFF00
-        reg2 -= reg6
-        blockB[i] = blockB[reg2]
-        blockB[reg2] = reg3
-    return blockB
-
-def decrypt(dataBytes,statisticsOut=None,rc4Key=None):
-    decDataBytes = [ord(b) for b in dataBytes]
-    keyMap = computeRC4KeyMap(rc4Key)
-    R3,R4 = 0, 0
-    for i in range(len(decDataBytes)):
-        R3 += 1
-        R5 = ((R3>>0x1f)>>0x18)
-        R6 = (R3 + R5 )& 0xFFFFFF00
-        R3 -= R6
-        R6 = keyMap[R3]
-        R4 = R4 + R6
-        R5 = (((R4>>0x1f)>>0x18) + R4) & 0xFFFFFF00
-        R4 = R4 - R5
-        keyMap[R3] = keyMap[R4]
-        keyMap[R4] = R6
-        R5 = (keyMap[R3] + R6) & 0xFF
-        org = decDataBytes[i]
-        decDataBytes[i] ^= keyMap[R5]
-        if statisticsOut is not None:
-            if not org in statisticsOut:
-                statisticsOut[org] = set()
-            statisticsOut[org].add(decDataBytes[i])
-    
-    return bytes(bytearray(decDataBytes)) if isinstance(dataBytes,bytes) else bytearray(decDataBytes) if isinstance(dataBytes,bytearray) else decDataBytes
-
-'''
-只有 js html css config.xml key.xml 进行了加密 其他文件没有 不需要解密
-'''
-enc_exts = ['js','html','css']
-def needDecryptFile(fileName):
-    global enc_exts
-    extIdx = fileName.rfind('.')
-    ext = fileName[extIdx+1:] if extIdx>-1 else None
-    return  ext in enc_exts or 'config.xml' in fileName or 'key.xml' in fileName
-
-def decryptSingleFile(targetFile,saveTo=None,statisticsOut=None):
-    if not os.path.exists(targetFile):
-        return None
-    if not needDecryptFile(targetFile):
-        return None
-    decContent = None
-    with open(targetFile,'rb') as f:
-        statsO = None
-        if statisticsOut is not None:
-            statsO = statisticsOut[targetFile] = {}
-        decContent = decrypt(f.read(),statsO)
-    
-    if saveTo:
-        with open(saveTo,'wb') as f:
-            f.write(decContent)
-    return decContent
-
-def decryptResourceFiles(folder,statisticsOut=None):
-    if not os.path.exists(folder):
-        return
-    
-    targetFiles = []
-    if os.path.isdir(folder):
-        for root, dirs, files in os.walk(folder):
-            targetFiles.extend(['{}/{}'.format(root,f) for f in files])
-    else:
-        targetFiles.append(folder)
-    
-    if targetFiles:
-        for tFile in targetFiles:
-            extIdx = tFile.rfind('.')
-            saveTo = '{}_decrypted.{}'.format(tFile[0:extIdx],tFile[extIdx+1:]) if extIdx>-1 else '{}_decrypted'.format(tFile)
-            if os.path.exists(saveTo):
-                continue
-            decryptResult = decryptSingleFile(tFile,saveTo,statisticsOut)
-            if not decryptResult:
-                continue
-            print('decrypt:{} => {}'.format(tFile,saveTo))
-
-def extractRC4KeyFromApk(apkFilePath):
-    if not os.path.exists(apkFilePath):
-        print('{} does not exists'.format(apkFilePath))
-        return None
-    with zipfile.ZipFile(apkFilePath) as apkFile:
-        apkResList = apkFile.namelist()
-        soFiles = []
-        for fname in apkResList:
-            if fname.startswith('lib/') and fname.endswith('libsec.so'):
-                with apkFile.open(fname) as soContent:
-                    elfHeader = soContent.read(6)
-                    #check elffile format(https://en.wikipedia.org/wiki/Executable_and_Linkable_Format)
-                    if ord(elfHeader[1])==ord('E') and ord(elfHeader[2])==ord('L') and ord(elfHeader[3])==ord('F'):
-                        soFiles.append(fname)
-        if not soFiles:
-            print('libsec.so file not exists in apk file')
-            return None
-        for soFile in soFiles:
-            with apkFile.open(soFile,'r') as soContent:
-                soTmp = None
-                if not soContent.seekable() or isBuggyZipfile():
-                    soTmp = tempfile.mkstemp('.tmp','tmp',os.path.dirname(os.path.abspath(apkFilePath)))
-                    with open(soTmp[1],'wb') as soTmpC:
-                        shutil.copyfileobj(soContent,soTmpC)
-                    soContent.close()
-                    soContent = open(soTmp[1],'rb')
-                rc4Key = extractRC4Key(soContent)
-                if soTmp:
-                    os.close(soTmp[0])
-                    os.remove(soTmp[1])
-                return rc4Key
-    return None
-
-def iterateAllNeedDecryptAssets(apkFilePath):
-    if not os.path.exists(apkFilePath):
-        print('{} does not exists'.format(apkFilePath))
-        return
-    with zipfile.ZipFile(apkFilePath) as apkFile:
-        apkResList = apkFile.namelist()
-        for resName in apkResList:
-            if resName.startswith('assets/widget/'):
-                if needDecryptFile(resName):
-                    yield resName,apkFile.open(resName)
-
-def isResourceEncrypted(apkFilePath):
-    '''
-    可以通过判断 apk 中的类 compile.Properties.smode 的值 ： true表示有加密 false表示未加密
-    但目前没办法直接通过解析 apk的字节码来判断对应类方法的返回值，所以先简单的从 assets/widget/config.xml 文件进行判断
-    app第一个需要解密的文件是config.xml，如果这个文件没有加密 则说明其它文件也一样没有加密  反之亦然
-    '''
-    if not os.path.exists(apkFilePath):
-        print('{} does not exists'.format(apkFilePath))
-        return False
-    confFile = 'assets/widget/config.xml'
-    rawXmlFileHead = '<?xml'.encode('utf-8')
-    with zipfile.ZipFile(apkFilePath) as apkFile:
-        confFileBytes = None
-        try:
-            confFileBytes = apkFile.open(confFile).read()
-        except:
-            pass
-        if not confFileBytes:
-            print('{} does not exists in apk'.format(confFile))
-            return False
-        return confFileBytes.find(rawXmlFileHead) == -1
-
-'''
-判断熵的大小 一般加密的文件熵都超过0.9
-(媒体文件除外，媒体文件的熵一般都在0.8-1之间)
-'''
-def isVeryLikelyEncrypted(dataBytes):
-    entropyValue = entropy.shannonEntropy(dataBytes) if len(dataBytes)<=512 else entropy.gzipEntropy(dataBytes)
-    return entropyValue>=0.9
-
 def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
-    resEncrypted = isResourceEncrypted(apkFilePath)
-    rc4Key = None
-    if resEncrypted:
-        rc4Key = extractRC4KeyFromApk(apkFilePath)
-        if not rc4Key:
-            if printLog:
-                print('fail to extract rc4 key')
-            return None
-    allAssets = iterateAllNeedDecryptAssets(apkFilePath)
-    decryptMap = {}
-    if allAssets:
-        storeFolder = os.path.dirname(os.path.abspath(apkFilePath))
-        if saveTo :
-            if not os.path.exists(saveTo):
-                os.makedirs(saveTo)
-            storeFolder = saveTo
-        if storeFolder.endswith('/') or storeFolder.endswith('\\'):
-            storeFolder = storeFolder[0:-1]
+    return uzm_util.decryptAllResourcesInApk(apkFilePath,determineSavePath(apkFilePath,saveTo),printLog)
 
-        while True:
-            assetFile = next(allAssets,None)
-            if not assetFile:
-                break
-            fName,fileContent = assetFile
-            rawContent = fileContent.read()
-            decContent = decrypt(rawContent,rc4Key=rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent
-            fileContent.close()
-            resDecrypted = '{}/{}'.format(storeFolder,fName)
-            decryptMap[fName] = resDecrypted 
-            if not os.path.exists(os.path.dirname(resDecrypted)):
-                os.makedirs(os.path.dirname(resDecrypted))
-            with open(resDecrypted,'wb') as f:
-                f.write(decContent)
-            if printLog:
-                print('decrypt {} => {}'.format(fName,resDecrypted))
+'''
+旧api
+查看apicloud的apk的资源密钥
+'''
+def extractRC4KeyFromApk(apkFilePath):
+    return uzm_util.extractRC4KeyFromApk(apkFilePath)
+
+
+def _decryptAPICloudApkResources(apkFilePath,saveTo,msgQueue=None,printLog=False):
+    decMap = uzm_util.decryptAllResourcesInApk(apkFilePath,saveTo,printLog)
+    if msgQueue:
+        msgQueue.put_nowait((apkFilePath,saveTo,decMap))
+    return apkFilePath,saveTo,decMap
+
+def _decryptAPICloudApkResourcesParallel(apkFilePath,saveTo,procPool=None,msgQueue=None,printLog=False):
+    decMap = uzm_util.decryptAllResourcesInApkParallel(apkFilePath,saveTo,printLog,procPool=procPool)
+    if msgQueue:
+        msgQueue.put_nowait((apkFilePath,saveTo,decMap))
+    return apkFilePath,saveTo,decMap
+
+def _scanAPICloudApks(procPool,msgQueue,resourcePath,extractRC4Key=False,printLog=False):
+
+    def scanHandle(procPool,msgQueue,resourcePath,extractRC4Key,globalStates):
+        for root, dirs, files in os.walk(resourcePath):
+            for f in files:
+                procPool.apply_async(extractAPICloudApkInfo,args=('{}/{}'.format(root,f),extractRC4Key,msgQueue)) 
+                globalStates['submittedFiles'] += 1
+        globalStates['scanComplete'] = True
+    
+    globalStates = {'submittedFiles':0,'scanComplete':False,'processedFiles':0}
+
+    scanTh = threading.Thread(target=scanHandle,args=(procPool,msgQueue,resourcePath,extractRC4Key,globalStates))
+    scanTh.start()
+    
+    apkInfoMap = {}
+    while True:
+        if globalStates['scanComplete'] and globalStates['submittedFiles']<=globalStates['processedFiles']:
+            break
+        if msgQueue.empty():
+            time.sleep(0.01)
+            continue
+        apkPath,apkInfo = msgQueue.get_nowait()
+        globalStates['processedFiles'] += 1
+        if apkInfo:
+            apkInfoMap[apkPath] = apkInfo
+        msgQueue.task_done()
+        if printLog:
+            sys.stdout.write('\r{}/{}  => {}'.format(globalStates['processedFiles'],globalStates['submittedFiles'],apkPath))
+            sys.stdout.flush()
+    if printLog:
+        print()
+    return apkInfoMap
+
+def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
+
+    totalApks = len(apkInfoMap)
+    decApkMap = {}
+    for apkPath,apkInfo in apkInfoMap.items():
+        if printLog:
+            print(apkPath)
+        saveApkPath = determineSavePath(apkPath,saveTo)
+        decMap = uzm_util.decryptAllResourcesInApkParallel(apkPath,saveApkPath,printLog,procPool=procPool,msgQueue=msgQueue)
+        decApkMap[apkPath] = (saveApkPath,decMap)
+        if printLog:
+            print('\t=>{}'.format(saveApkPath))
+            print('\t{} files decrypted.'.format(len(decMap)))
+            print('\n')
+    return decApkMap
+
+
+def extractAPICloudApkInfo(resourcePath,extractRC4Key=False,msgQueue=None,isDefaultApk=False):
+    apicloudInfo = apk_util.extractAPICloudInfo(resourcePath,isDefaultApk)
+    if apicloudInfo:
+        apicloudInfo['resKey'] = uzm_util.extractRC4KeyFromApk(resourcePath)
+        apicloudInfo['encrypted'] = uzm_util.isResourceEncrypted(resourcePath)
+    if msgQueue:
+        msgQueue.put_nowait((resourcePath,apicloudInfo))
+    return resourcePath,apicloudInfo
+
+
+'''
+resourcePath 可以是apk的路径， 也可以apk所在的目录
+如果是目录，则会扫描所有可能的apicloud apk，并进行信息的提取
+'''
+def extractAPICloudApkInfos(resourcePath,printLog=False):
+    if not os.path.isdir(resourcePath):
+        _,apicloudInfo = extractAPICloudApkInfo(resourcePath,True)
+        return {resourcePath:apicloudInfo} if apicloudInfo else {}
+
+    msgQueue = multiprocessing.Manager().Queue(0)
+    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count() ) ) 
+
+    apkInfoMap = _scanAPICloudApks(procPool,msgQueue,resourcePath,True,printLog=printLog)
+    try:
+        procPool.close()
+        procPool.join()
+    except:pass
+
+    return apkInfoMap
+'''
+resourcePath 可以是apk的路径， 也可以apk所在的目录
+如果是目录，则会自动扫描并解密所有的apk, 解密后存放到 saveTo/apkName/
+'''
+def decryptAndExtractAPICloudApkResources(resourcePath,saveTo,printLog=False):
+    if not os.path.isdir(resourcePath):
+        return {resourcePath:uzm_util.decryptAllResourcesInApkParallel(resourcePath,determineSavePath(resourcePath,saveTo),printLog)} 
+
+    msgQueue = multiprocessing.Manager().Queue(0)
+    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count() ) ) 
+    
+    startTime = time.time()
+    apkInfoMap = _scanAPICloudApks(procPool,msgQueue,resourcePath,False,printLog=printLog)
+    scanCost = time.time()-startTime
+    if not apkInfoMap:
+        if printLog:
+            print(u'no apicloud apk found')
+        return {}
+    
+    if printLog:
+        print(u'{} seconds elapsed.  {} apks found'.format(scanCost,len(apkInfoMap)))
+    
+    if len(apkInfoMap)<2:
+        apkFile = list(apkInfoMap.keys())[0]
+        decryptMap = {apkFile:(determineSavePath(apkFile,saveTo),uzm_util.decryptAllResourcesInApkParallel(apkFile,saveTo,printLog,procPool,msgQueue))} 
+    else:
+        decryptMap = _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog)
+
+    try:
+        procPool.close()
+        procPool.join()
+    except:pass
 
     return decryptMap
         
