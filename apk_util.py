@@ -75,6 +75,8 @@ def isPossibleArsc(arscFile,arscInfo=None):
     return expectedChunkSize == actualChunkSize
 
 def isPossibleApkFile(filePath):
+    if not zipfile.is_zipfile(filePath):
+        return False
     try:
         manifestVerify,dexVerify, arscVerify = [], [], []
         with zipfile.ZipFile(filePath,'r') as apkArc:
@@ -262,6 +264,8 @@ def extractAPICloudInfo(filePath,isDefaultApk=False):
         return None
     try:
         uzAppInfo = None
+        if not zipfile.is_zipfile(filePath):
+            return uzAppInfo
         with zipfile.ZipFile(filePath,'r') as apkArc:
             with apkArc.open(APK_MANIFEST,'r') as manifest:
                 mBytes = manifest.read()
