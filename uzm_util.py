@@ -13,7 +13,7 @@ import entropy
 import threading
 import time
 import multiprocessing
-
+import importlib
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
 0:20*4 byte 数据映射的取值
@@ -30,7 +30,10 @@ jni注册使用的类名字符串常量 "com/uzmap/pkg/uzcore/external/Enslecb"
 2020/6/6 将tools.py迁移至此
 '''
 JNI_PACKAGE_BYTES = 'com/uzmap/pkg/uzcore/external/Enslecb'.encode('utf-8')
-
+CRYPTODOME_ARC4 = None
+try:
+    CRYPTODOME_ARC4 = importlib.import_module('Crypto.Cipher.ARC4')
+except:pass
 def extractRC4Key(soFile):
     global JNI_PACKAGE_BYTES
     keyStr,keyIdx = None,None
@@ -52,13 +55,10 @@ def extractRC4Key(soFile):
     #print(keyStr)
     return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
 
-def getPreKey(rawKey=None,keyIdxArr=None):
-    global rawKeyData,preKeyIdx
-    if rawKey is None:
-        rawKey,keyIdxArr = rawKeyData,preKeyIdx
+def getPreKey(rawKey,keyIdxArr):
     return ''.join([rawKey[idx] for idx in keyIdxArr])
 
-def computeRC4KeyMap(rc4Key=None):
+def computeRC4KeyMap(rc4Key):
     preKey = rc4Key
     if rc4Key is None or isinstance(rc4Key,tuple):
         preKey = getPreKey(rc4Key[0] if rc4Key else None,rc4Key[1] if rc4Key else None)
@@ -74,7 +74,15 @@ def computeRC4KeyMap(rc4Key=None):
         blockB[reg2] = reg3
     return blockB
 
-def decrypt(dataBytes,rc4Key=None):
+def decrypt(dataBytes,rc4Key):
+    #use pycryptodome library to speed up decryption
+    ''''''
+    global CRYPTODOME_ARC4
+    if CRYPTODOME_ARC4:
+        # Object type <type 'unicode'> cannot be passed to C code
+        rc4Instance = CRYPTODOME_ARC4.new(rc4Key.encode('utf-8') if isinstance(rc4Key,unicode) else rc4Key)
+        return rc4Instance.decrypt(dataBytes)
+    
     decDataBytes = [ord(b) for b in dataBytes]
     keyMap = computeRC4KeyMap(rc4Key)
     R3,R4 = 0, 0
@@ -104,17 +112,14 @@ def needDecryptFile(fileName):
     ext = fileName[extIdx+1:] if extIdx>-1 else None
     return  ext in enc_exts or 'config.xml' in fileName or 'key.xml' in fileName
 
-def decryptSingleFile(targetFile,saveTo=None):
+def decryptSingleFile(targetFile,rc4Key,saveTo=None):
     if not os.path.exists(targetFile):
         return None
     if not needDecryptFile(targetFile):
         return None
     decContent = None
     with open(targetFile,'rb') as f:
-        statsO = None
-        if statisticsOut is not None:
-            statsO = statisticsOut[targetFile] = {}
-        decContent = decrypt(f.read())
+        decContent = decrypt(f.read(),rc4Key)
     
     if saveTo:
         with open(saveTo,'wb') as f:
@@ -252,13 +257,16 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
-                print('decrypt {} => {}'.format(fName,resDecrypted))
+                sys.stdout.write('decrypt {}\r'.format(fName))
+                sys.stdout.flush()
+        if printLog:
+            print(u'completed\n')
 
     return decryptMap
 
 
 def _decryptHandle(fName,rawContent,rc4Key,resEncrypted,msgQueue):
-    decContent = decrypt(rawContent,rc4Key=rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent 
+    decContent = decrypt(rawContent,rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent 
     msgQueue.put_nowait((fName,decContent))
 
 def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,procPool=None,msgQueue=None):
@@ -269,7 +277,7 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
             if printLog:
                 print(u'fail to extract rc4 key')
             return None
-    #print('decryptAllResourcesInApkParallel',apkFilePath,resEncrypted,rc4Key)
+    #print('decryptAllResourcesInApkParallel',apkFilePath,resEncrypted,rc4Key,type(rc4Key))
     allAssets = iterateAllNeedDecryptAssets(apkFilePath)
     decryptMap = {}
     if allAssets:
@@ -319,7 +327,7 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
-                sys.stdout.write('\r{}/{}  decrypt {} '.format(globalStates['processedFiles'],globalStates['submittedFiles'],fName))
+                sys.stdout.write('{}/{}  decrypt {}\r'.format(globalStates['processedFiles'],globalStates['submittedFiles'],fName))
                 sys.stdout.flush()
         if printLog:
             print(u'completed\n')
