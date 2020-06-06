@@ -22,6 +22,7 @@ pip install requirements
 ```
 
 - 支持pycryptodome, 让解密更高效
+
   ```
   pip install optional-requirements
   ```
