@@ -1,0 +1,3 @@
+#efficient crypto operations for python
+#if performance matters, choose this
+pycryptodome>=3.8.1
