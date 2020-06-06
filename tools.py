@@ -77,7 +77,7 @@ def _scanAPICloudApks(procPool,msgQueue,resourcePath,extractRC4Key=False,printLo
             apkInfoMap[apkPath] = apkInfo
         msgQueue.task_done()
         if printLog:
-            sys.stdout.write('\r{}/{}  => {}'.format(globalStates['processedFiles'],globalStates['submittedFiles'],apkPath))
+            sys.stdout.write('{}/{}  => {}\r'.format(globalStates['processedFiles'],globalStates['submittedFiles'],apkPath))
             sys.stdout.flush()
     if printLog:
         print()
