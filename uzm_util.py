@@ -15,6 +15,7 @@ import threading
 from queue import Queue
 import time
 import multiprocessing
+import importlib
 
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
@@ -32,6 +33,12 @@ jni注册使用的类名字符串常量 "com/uzmap/pkg/uzcore/external/Enslecb"
 从原先的tools.py 迁移到 uzm_util.py
 '''
 JNI_PACKAGE_BYTES = 'com/uzmap/pkg/uzcore/external/Enslecb'.encode('utf-8')
+
+# pycryptodome rc4 implementation
+CRYPTODOME_ARC4 = None
+try:
+    CRYPTODOME_ARC4 = importlib.import_module('Crypto.Cipher.ARC4')
+except:pass
 
 def extractRC4Key(soFile):
     global JNI_PACKAGE_BYTES
@@ -60,13 +67,10 @@ preKeyIdx = [0x13,0x6,0x1f,0xa,0x8,0x12,0x3,0x16,0xb,0x0,0x12,0xc,0x19,0x6,0x12,
 rawKeyData = '988f520873542ac4a8df3cbfa8937024'
 '''
 
-def getPreKey(rawKey=None,keyIdxArr=None):
-    global rawKeyData,preKeyIdx
-    if rawKey is None:
-        rawKey,keyIdxArr = rawKeyData,preKeyIdx
+def getPreKey(rawKey,keyIdxArr):
     return ''.join([rawKey[idx] for idx in keyIdxArr])
 
-def computeRC4KeyMap(rc4Key=None):
+def computeRC4KeyMap(rc4Key):
     preKey = rc4Key
     if rc4Key is None or isinstance(rc4Key,tuple):
         preKey = getPreKey(rc4Key[0] if rc4Key else None,rc4Key[1] if rc4Key else None)
@@ -82,7 +86,11 @@ def computeRC4KeyMap(rc4Key=None):
         blockB[reg2] = reg3
     return blockB
 
-def decrypt(dataBytes,rc4Key=None):
+def decrypt(dataBytes,rc4Key):
+    global CRYPTODOME_ARC4
+    if CRYPTODOME_ARC4:
+        rc4 = CRYPTODOME_ARC4.new(rc4Key.encode('utf-8') if isinstance(rc4Key,type(' ')) else rc4Key)
+        return rc4.decrypt(dataBytes)
     isBytes,isByteArray = isinstance(dataBytes,bytes),isinstance(dataBytes,bytearray)
     decDataBytes = []
     keyMap = computeRC4KeyMap(rc4Key)
@@ -114,17 +122,14 @@ def needDecryptFile(fileName):
     ext = fileName[extIdx+1:] if extIdx>-1 else None
     return  ext in enc_exts or 'config.xml' in fileName or 'key.xml' in fileName
 
-def decryptSingleFile(targetFile,saveTo=None):
+def decryptSingleFile(targetFile,rc4Key,saveTo=None):
     if not os.path.exists(targetFile):
         return None
     if not needDecryptFile(targetFile):
         return None
     decContent = None
     with open(targetFile,'rb') as f:
-        statsO = None
-        if statisticsOut is not None:
-            statsO = statisticsOut[targetFile] = {}
-        decContent = decrypt(f.read(),statsO)
+        decContent = decrypt(f.read(),rc4Key)
     
     if saveTo:
         with open(saveTo,'wb') as f:
@@ -268,7 +273,7 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
-                sys.stdout.write('\rdecrypt {}'.format(fName))
+                sys.stdout.write('decrypt {}\r'.format(fName))
                 sys.stdout.flush()
         if printLog:
             print()
@@ -276,7 +281,7 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
     return decryptMap
 
 def _decryptHandle(fName,rawContent,rc4Key,resEncrypted,msgQueue):
-    decContent = decrypt(rawContent,rc4Key=rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent 
+    decContent = decrypt(rawContent,rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent) else rawContent 
     msgQueue.put_nowait((fName,decContent))
 
 def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,procPool=None,msgQueue=None):
@@ -337,7 +342,9 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
-                sys.stdout.write('\r{}/{}  decrypt {} '.format(globalStates['processedFiles'],globalStates['submittedFiles'],fName))
+                #sys.stdout.write('\r{}'.format(' '*96))
+                #sys.stdout.flush()
+                sys.stdout.write('{}/{}  decrypt {}\r'.format(globalStates['processedFiles'],globalStates['submittedFiles'],fName))
                 sys.stdout.flush()
         if printLog:
             print('completed')
