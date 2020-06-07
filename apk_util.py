@@ -19,7 +19,7 @@
 # limitations under the License.
 
 # The main part of AndroidManifest.xml parsing was inspired by apk_parse
-# For your interest, please reference to the original implementation => https://github.com/tdoly/apk_parse/blob/master/apk.py
+# For your interest, please refer to the original implementation => https://github.com/tdoly/apk_parse/blob/master/apk.py
 
 import os
 import sys
@@ -31,7 +31,7 @@ import codecs
 APK_MANIFEST = 'AndroidManifest.xml'
 
 APICLOUD_MANIFEST_APPNAME = 'com.uzmap.pkg.uzapp.UZApplication'
-APICLOUD_MANIFEST_APPMETA = 'uz_version'
+APICLOUD_MANIFEST_APPVERSION = 'uz_version'
 
 APK_MANIFEST_STARTTAG_BYTES = b'\x02\x01\x10\x00'
 DEXHEAD_MAGICS = [b'\x64\x65\x78\x0A\x30\x33',\
@@ -66,9 +66,9 @@ def isPossibleManifest(manifest,manifestInfo=None):
     manifestHeaders = manifest.read(16)
     if not manifestHeaders or len(manifestHeaders)<16:
         return False
-    xmlHead = struct.unpack('<h',manifestHeaders[0:2])[0] #int.from_bytes(manifestHeaders[0:2],'little')
-    xmlChunkSize = struct.unpack('<i',manifestHeaders[4:8])[0] #int.from_bytes(manifestHeaders[4:8],'little')
-    strHead = struct.unpack('<h',manifestHeaders[8:10])[0] #int.from_bytes(manifestHeaders[8:10],'little')
+    xmlHead = struct.unpack('<h',manifestHeaders[0:2])[0] 
+    xmlChunkSize = struct.unpack('<i',manifestHeaders[4:8])[0] 
+    strHead = struct.unpack('<h',manifestHeaders[8:10])[0] 
     if manifestInfo:
         actualFileSize = manifestInfo.file_size
     else:
@@ -78,16 +78,16 @@ def isPossibleManifest(manifest,manifestInfo=None):
 def isPossibleArsc(arscFile,arscInfo=None):
     global CHUNK_TABLE,CHUNK_STRING, CHUNK_TABLEPACKAGE
     headInfo = arscFile.read(8)
-    expectedChunkSize,actualChunkSize = struct.unpack('<i',headInfo[4:8])[0]  , 0  #int.from_bytes(headInfo[4:8],'little')
-    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_TABLE:  #int.from_bytes(headInfo[0:2],'little')
+    expectedChunkSize,actualChunkSize = struct.unpack('<i',headInfo[4:8])[0] , 0  
+    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_TABLE:  
         return False
-    actualChunkSize += 8 + len( arscFile.read(struct.unpack('<h',headInfo[2:4])[0] - 8) )  #int.from_bytes(headInfo[2:4],'little')
+    actualChunkSize += 8 + len( arscFile.read(struct.unpack('<h',headInfo[2:4])[0] - 8) )  
     headInfo = arscFile.read(8)
-    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_STRING:  #int.from_bytes(headInfo[0:2],'little')
+    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_STRING: 
         return False
-    actualChunkSize += 8 + len( arscFile.read(struct.unpack('<i',headInfo[4:8])[0]  - 8) )  #int.from_bytes(headInfo[4:8],'little')
+    actualChunkSize += 8 + len( arscFile.read(struct.unpack('<i',headInfo[4:8])[0]  - 8) )  
     headInfo = arscFile.read(8)
-    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_TABLEPACKAGE:  #int.from_bytes(headInfo[0:2],'little')
+    if len(headInfo)<8 or struct.unpack('<h',headInfo[0:2])[0] != CHUNK_TABLEPACKAGE:  
         return False
     if arscInfo:
         actualChunkSize = arscInfo.file_size
@@ -111,16 +111,17 @@ def isPossibleApkFile(filePath):
                 elif zipInfo.filename.startswith('classes') and zipInfo.filename.endswith('.dex'):
                     with apkArc.open(zipInfo.filename,'r') as apkDex:
                         dexVerify.append( isPossibleDexFile(apkDex,zipInfo) )
-
+            # one AndroidManifest.xml, one resources.arsc and not less than one dex
             if len(manifestVerify)!=1:
                 manifestVerify.append(False)
             if len(arscVerify)!=1:
                 arscVerify.append(False) 
             if len(dexVerify)<1:
                 dexVerify.append(False)
-        #print(manifestVerify,dexVerify,arscVerify)
+
         return all(manifestVerify) and all(dexVerify) and all(arscVerify)
     except:
+        print('error parsing file:'.format(filePath))
         traceback.print_exc()
         return False
 
@@ -242,7 +243,7 @@ def extractStringList(fileBytes,fOffset):
 extract all attribute name-value pair from manifest file
 return a list of name-value map ,  each item is correspondent to a specific tag in xml 
 '''
-def extractAttributes(fileBytes,onlySimpleAttr=True):
+def extractManifestAttributes(fileBytes,onlySimpleAttr=True):
     global APK_MANIFEST_STARTTAG_BYTES,UTF8_FLAG,ATTR_TYPE_STRING
     #extract all string
     stringList = extractStringList(fileBytes,8)
@@ -281,7 +282,7 @@ def extractAttributes(fileBytes,onlySimpleAttr=True):
     return tagAttrs
 
 def extractAPICloudInfo(filePath,isDefaultApk=False):
-    global APK_MANIFEST,APICLOUD_MANIFEST_APPNAME,APICLOUD_MANIFEST_APPMETA
+    global APK_MANIFEST,APICLOUD_MANIFEST_APPNAME,APICLOUD_MANIFEST_APPVERSION
     isApk = isPossibleApkFile(filePath) if not isDefaultApk else True
     if not isApk:
         return None
@@ -292,23 +293,24 @@ def extractAPICloudInfo(filePath,isDefaultApk=False):
         with zipfile.ZipFile(filePath,'r') as apkArc:
             with apkArc.open(APK_MANIFEST,'r') as manifest:
                 mBytes = manifest.read()
-                attrsList = extractAttributes(mBytes)
-                manifest = {}
-                hasFoundApplication = False
+                attrsList = extractManifestAttributes(mBytes)
+                manifest, applicationName, versionAttrs = {}, None, None
                 for tagName,attrs in attrsList:
                     if tagName=='manifest':
                         manifest = attrs
-                    elif tagName=='application' and attrs['name']==APICLOUD_MANIFEST_APPNAME:
-                        hasFoundApplication = True
-                    elif hasFoundApplication and tagName=='meta-data' and APICLOUD_MANIFEST_APPMETA in attrs:
-                        uzAppInfo = {}
-                        uzAppInfo.update(manifest)
-                        uzAppInfo.update(attrs)
-                        break
+                    elif tagName=='application' and 'name' in attrs:
+                        applicationName = attrs['name']
+                    elif tagName=='meta-data' and APICLOUD_MANIFEST_APPVERSION in attrs:
+                        versionAttrs = attrs
+
+                if applicationName==APICLOUD_MANIFEST_APPNAME and versionAttrs:
+                    uzAppInfo = {}
+                    uzAppInfo.update(manifest)
+                    uzAppInfo.update(versionAttrs)
                 
         return uzAppInfo
     except:
-        print('error parsing file:{}'.format(filePath))
+        print('error extracting apicloud info :{}'.format(filePath))
         traceback.print_exc()
         return None
 
