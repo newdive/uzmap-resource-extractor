@@ -80,7 +80,7 @@ def _scanAPICloudApks(procPool,msgQueue,resourcePath,extractRC4Key=False,printLo
             sys.stdout.write('{}/{}  => {}\r'.format(globalStates['processedFiles'],globalStates['submittedFiles'],apkPath))
             sys.stdout.flush()
     if printLog:
-        print()
+        print('\n')
     return apkInfoMap
 
 def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):

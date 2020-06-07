@@ -19,7 +19,7 @@
 # limitations under the License.
 
 # The main part of AndroidManifest.xml parsing was inspired by apk_parse
-# For your interest, please reference to the original implementation => https://github.com/tdoly/apk_parse/blob/master/apk.py
+# For your interest, please refer to the original implementation => https://github.com/tdoly/apk_parse/blob/master/apk.py
 
 
 import os
@@ -32,7 +32,7 @@ import codecs
 APK_MANIFEST = 'AndroidManifest.xml'
 
 APICLOUD_MANIFEST_APPNAME = 'com.uzmap.pkg.uzapp.UZApplication'
-APICLOUD_MANIFEST_APPMETA = 'uz_version'
+APICLOUD_MANIFEST_APPVERSION = 'uz_version'
 
 APK_MANIFEST_STARTTAG_BYTES = b'\x02\x01\x10\x00'
 DEXHEAD_MAGICS = [b'\x64\x65\x78\x0A\x30\x33',\
@@ -112,14 +112,17 @@ def isPossibleApkFile(filePath):
                 elif zipInfo.filename.startswith('classes') and zipInfo.filename.endswith('.dex'):
                     with apkArc.open(zipInfo.filename,'r') as apkDex:
                         dexVerify.append( isPossibleDexFile(apkDex,zipInfo) )
-
+            # one AndroidManifest.xml, one resources.arsc and not less than one dex
             if len(manifestVerify)!=1:
                 manifestVerify.append(False)
             if len(arscVerify)!=1:
                 arscVerify.append(False)    
-        #print(manifestVerify,dexVerify,arscVerify)
+            if len(dexVerify)<1:
+                dexVerify.append(False)
+
         return all(manifestVerify) and all(dexVerify) and all(arscVerify)
     except:
+        print('error parsing file:'.format(filePath))
         traceback.print_exc()
         return False
 
@@ -280,7 +283,7 @@ def extractAttributes(fileBytes,onlySimpleAttr=True):
     return tagAttrs
 
 def extractAPICloudInfo(filePath,isDefaultApk=False):
-    global APK_MANIFEST,APICLOUD_MANIFEST_APPNAME,APICLOUD_MANIFEST_APPMETA
+    global APK_MANIFEST,APICLOUD_MANIFEST_APPNAME,APICLOUD_MANIFEST_APPVERSION
     isApk = isPossibleApkFile(filePath) if not isDefaultApk else True
     if not isApk:
         return None
@@ -292,21 +295,23 @@ def extractAPICloudInfo(filePath,isDefaultApk=False):
             with apkArc.open(APK_MANIFEST,'r') as manifest:
                 mBytes = manifest.read()
                 attrsList = extractAttributes(mBytes)
-                manifest = {}
-                hasFoundApplication = False
+                manifest, applicationName, versionAttrs = {}, None, None
                 for tagName,attrs in attrsList:
                     if tagName=='manifest':
                         manifest = attrs
-                    elif tagName=='application' and attrs['name']==APICLOUD_MANIFEST_APPNAME:
-                        hasFoundApplication = True
-                    elif hasFoundApplication and tagName=='meta-data' and APICLOUD_MANIFEST_APPMETA in attrs:
-                        uzAppInfo = {}
-                        uzAppInfo.update(manifest)
-                        uzAppInfo.update(attrs)
-                        break
-                
+                    elif tagName=='application' and 'name' in attrs:
+                        applicationName = attrs['name']
+                    elif tagName=='meta-data' and APICLOUD_MANIFEST_APPVERSION in attrs:
+                        versionAttrs = attrs
+
+                if applicationName==APICLOUD_MANIFEST_APPNAME and versionAttrs:
+                    uzAppInfo = {}
+                    uzAppInfo.update(manifest)
+                    uzAppInfo.update(versionAttrs)
+
         return uzAppInfo
     except:
+        print('error extracting apicloud info :{}'.format(filePath))
         traceback.print_exc()
         return None
 
