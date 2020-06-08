@@ -302,8 +302,10 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
                 fName,fileContent = assetFile
                 rawContent = fileContent.read()
                 fileContent.close()
-                procPool.apply_async(_decryptHandle,args=(fName,rawContent,rc4Key,resEncrypted,msgQueue))
-                #executor.submit(decryptHandle,fName,rawContent,rc4Key,resEncrypted,msgQueue)
+                if resEncrypted:
+                    procPool.apply_async(_decryptHandle,args=(fName,rawContent,rc4Key,resEncrypted,msgQueue))
+                else:
+                    msgQueue.put_nowait((fName,rawContent))
                 globalStates['submittedFiles'] += 1
             globalStates['submitCompleted'] = True
 
