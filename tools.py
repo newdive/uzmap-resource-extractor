@@ -102,7 +102,7 @@ def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
 
 def extractAPICloudApkInfo(resourcePath,extractRC4Key=False,msgQueue=None,isDefaultApk=False):
     apicloudInfo = apk_util.extractAPICloudInfo(resourcePath,isDefaultApk)
-    if apicloudInfo:
+    if apicloudInfo and extractRC4Key:
         apicloudInfo['resKey'] = uzm_util.extractRC4KeyFromApk(resourcePath)
         apicloudInfo['encrypted'] = uzm_util.isResourceEncrypted(resourcePath)
     if msgQueue:
