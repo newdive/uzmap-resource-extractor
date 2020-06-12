@@ -16,7 +16,7 @@ from queue import Queue
 import time
 import multiprocessing
 import importlib
-
+import file_util
 '''
 文件使用rc4算法进行加密 rc4的key数据定义在rodata中
 0:20*4 byte 数据映射的取值
@@ -111,6 +111,8 @@ def decrypt(dataBytes,rc4Key):
         decDataBytes.append(org^keyMap[R5])
     
     return bytes(bytearray(decDataBytes)) if isBytes else bytearray(decDataBytes) if isByteArray else decDataBytes
+
+
 
 '''
 只有 js html css config.xml key.xml 进行了加密 其他文件没有 不需要解密
@@ -266,10 +268,9 @@ def decryptAllResourcesInApk(apkFilePath,saveTo=None,printLog=False):
             rawContent = fileContent.read()
             decContent = decrypt(rawContent,rc4Key=rc4Key) if resEncrypted and isVeryLikelyEncrypted(rawContent)  else rawContent #
             fileContent.close()
-            resDecrypted = '{}/{}'.format(storeFolder,fName)
+            resDecrypted = file_util.legimateFileName('{}/{}'.format(storeFolder,fName))
             decryptMap[fName] = resDecrypted 
-            if not os.path.exists(os.path.dirname(resDecrypted)):
-                os.makedirs(os.path.dirname(resDecrypted))
+            file_util.createDirectoryIfNotExist(resDecrypted)
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
@@ -337,10 +338,9 @@ def decryptAllResourcesInApkParallel(apkFilePath,saveTo=None,printLog=False,proc
             fName,decContent = msgQueue.get_nowait()
             globalStates['processedFiles'] += 1
             msgQueue.task_done()
-            resDecrypted = '{}/{}'.format(storeFolder,fName)
-            decryptMap[fName] = resDecrypted 
-            if not os.path.exists(os.path.dirname(resDecrypted)):
-                os.makedirs(os.path.dirname(resDecrypted))
+            resDecrypted = file_util.legimateFileName('{}/{}'.format(storeFolder,fName))
+            decryptMap[fName] = resDecrypted
+            file_util.createDirectoryIfNotExist(resDecrypted)
             with open(resDecrypted,'wb') as f:
                 f.write(decContent)
             if printLog:
