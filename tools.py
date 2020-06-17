@@ -12,6 +12,7 @@ import uzm_util
 
 def determineSavePath(apkPath,saveTo):
     saveTo = saveTo.strip()
+    apkPath = os.path.abspath(apkPath)
     apkName = os.path.basename(apkPath)
     if not saveTo:
         saveTo = os.path.dirname(apkPath)
