@@ -18,13 +18,13 @@
 ### Setup ###
 先安装项目的依赖
 ```
-pip install requirements
+pip install -r requirements.txt
 ```
 
 - 支持pycryptodome, 让解密更高效
 
   ```
-  pip install optional-requirements
+  pip install -r optional-requirements.txt
   ```
 
 ### Usage ###
