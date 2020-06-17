@@ -13,6 +13,7 @@ import uzm_util
 
 def determineSavePath(apkPath,saveTo):
     saveTo = saveTo.strip()
+    apkPath = os.path.abspath(apkPath)
     apkName = os.path.basename(apkPath)
     if not saveTo:
         saveTo = os.path.dirname(apkPath)
@@ -135,6 +136,7 @@ resourcePath 可以是apk的路径， 也可以apk所在的目录
 '''
 def decryptAndExtractAPICloudApkResources(resourcePath,saveTo,printLog=False):
     if not os.path.isdir(resourcePath):
+        print(determineSavePath(resourcePath,saveTo))
         return {resourcePath:uzm_util.decryptAllResourcesInApkParallel(resourcePath,determineSavePath(resourcePath,saveTo),printLog)} 
 
     msgQueue = multiprocessing.Manager().Queue(0)
