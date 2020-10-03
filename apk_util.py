@@ -225,7 +225,7 @@ def extractStringList(fileBytes,fOffset):
             val = struct.unpack('=b',rawStringDataBlock[offset:offset+1])[0]
             more = (val & 0x80) != 0
             val &= 0x7f
-            length = (val << 8) | struct.unpack('=b',rawStringDataBlock[offset+1 : offset+2] )
+            length = (val << 8) | struct.unpack('=b',rawStringDataBlock[offset+1 : offset+2] )[0]
             offset += 2 if more else 1
             stringList.append(rawStringDataBlock[offset:offset+length].decode('utf-8',errors='replace'))
         else:
