@@ -9,6 +9,7 @@ import time
 import datetime
 import apk_util
 import uzm_util
+import traceback
 
 def determineSavePath(apkPath,saveTo):
     saveTo = saveTo.strip()
@@ -102,7 +103,13 @@ def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
 
 
 def extractAPICloudApkInfo(resourcePath,extractRC4Key=False,msgQueue=None,isDefaultApk=False):
-    apicloudInfo = apk_util.extractAPICloudInfo(resourcePath,isDefaultApk)
+    apicloudInfo = None
+    try:
+        apicloudInfo = apk_util.extractAPICloudInfo(resourcePath,isDefaultApk)
+    except:
+        print('error while extracting apk info from {}'.format(resourcePath))
+        traceback.print_exc()
+
     if apicloudInfo and extractRC4Key:
         apicloudInfo['resKey'] = uzm_util.extractRC4KeyFromApk(resourcePath)
         apicloudInfo['encrypted'] = uzm_util.isResourceEncrypted(resourcePath)
