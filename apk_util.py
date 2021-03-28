@@ -27,6 +27,7 @@ import struct
 import zipfile
 import traceback
 import codecs
+from asn1crypto import cms
 
 APK_MANIFEST = 'AndroidManifest.xml'
 
@@ -319,4 +320,27 @@ def isPossibleAPICloudApk(filePath,isDefaultApk=False):
         return True
     return False
 
-
+def extractAllApkSignatureBytes(apkFilePath):
+    if not os.path.exists(apkFilePath):
+        return None
+    sigBytesArr = []
+    with zipfile.ZipFile(apkFilePath,'r') as apkArc:
+        for zipInfo in apkArc.infolist():
+            zipFileName = zipInfo.filename.lower()
+            #print('check zipEntry:',zipFileName)
+            if not zipFileName.startswith('meta-inf/') or \
+                not ( zipFileName.endswith('.rsa') or zipFileName.endswith('.dsa')):
+                    continue
+            try:
+                with apkArc.open(zipInfo.filename,'r') as apkEntry:
+                    p = cms.ContentInfo.load(apkEntry.read())
+                    for c in p['content']['certificates']:
+                        certBytes = c.contents
+                        if isinstance(certBytes, type('')):
+                            certBytes = bytes(certBytes)
+                        sigBytesArr.append(certBytes)
+            except:
+                print('fail to parse certificate from zipEntry:',zipInfo.filename)
+                traceback.print_exc()
+    
+    return sigBytesArr
