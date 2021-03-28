@@ -33,6 +33,9 @@ def gzipEntropy(dataBytes):
     return min(e,1.0)
 
 
+def calculateEntropy(dataBytes):
+    return gzipEntropy(dataBytes) if len(dataBytes)>512 else shannonEntropy(dataBytes)
+
 def calculateFileEntropy(fileDir):
     entropyMap = {}
     if os.path.exists(fileDir):
