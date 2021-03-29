@@ -12,9 +12,9 @@
 ### Note ###
 > **接入 [AndroidNativeEmu](https://github.com/AeonLucid/AndroidNativeEmu/) ，探索并尝试新的解密思路** <br>
 
-- ```master```分支支持 ```python3.x```<br>
-- ```emu_support```分支支持 **AndroidNativeEmu 解密方式** <br>
-- ```python2```分支支持 ```python2.7```<br>
+- ```master``` 分支支持 ```python3.x```<br>
+- [emu_support](https://github.com/newdive/uzmap-resource-extractor/tree/emu_support) 分支支持 **AndroidNativeEmu 解密方式** <br>
+- ```python2``` 分支支持 ```python2.7```<br>
 请根据具体需要选择相应分支
 
 ### Setup ###
