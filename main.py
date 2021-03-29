@@ -19,6 +19,9 @@ if __name__ == '__main__':
     parser.add_option('-v','--viewInfo',
         action='store_true',dest='viewInfo',
         help='查看rc4的key等信息',default=False)
+    parser.add_option('-e','--emuMode',
+        action='store_true',dest='emuMode',
+        help='使用AndroidNativeEmu的方式进行解密(有效性高，但效率不一定)', default=False)
 
     options,args = parser.parse_args()
     #print(options)
@@ -45,5 +48,8 @@ if __name__ == '__main__':
     else:
         outputFolder = options.output
         startTime = time.time()
-        extractMap = tools.decryptAndExtractAPICloudApkResources(args[0],outputFolder,printLog=True)
+        if not options.emuMode:
+            extractMap = tools.decryptAndExtractAPICloudApkResources(args[0], outputFolder, printLog=True)
+        else:
+            extractMap = tools.decryptAndExtractAPICloudApkResourcesEmu(args[0], outputFolder)
         print('耗时 : {} 秒'.format(time.time()-startTime))

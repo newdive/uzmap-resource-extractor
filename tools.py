@@ -10,6 +10,7 @@ import time
 import datetime
 import apk_util
 import uzm_util
+import uzm_emu_util
 import traceback
 
 def determineSavePath(apkPath,saveTo):
@@ -54,8 +55,8 @@ def extractAPICloudApkInfo(resourcePath,extractRC4Key=False,msgQueue=None,isDefa
         apicloudInfo['resKey'] = uzm_util.extractRC4KeyFromApk(resourcePath)
         apicloudInfo['encrypted'] = uzm_util.isResourceEncrypted(resourcePath)
     if msgQueue:
-        msgQueue.put_nowait((resourcePath,apicloudInfo))
-    return resourcePath,apicloudInfo
+        msgQueue.put_nowait((resourcePath, apicloudInfo))
+    return resourcePath, apicloudInfo
 
 def _decryptAPICloudApkResources(apkFilePath,saveTo,msgQueue=None,printLog=False):
     decMap = uzm_util.decryptAllResourcesInApk(apkFilePath,saveTo,printLog)
@@ -69,18 +70,21 @@ def _decryptAPICloudApkResourcesParallel(apkFilePath,saveTo,procPool=None,msgQue
         msgQueue.put_nowait((apkFilePath,saveTo,decMap))
     return apkFilePath,saveTo,decMap
 
-def _scanAPICloudApks(procPool,msgQueue,resourcePath,extractRC4Key=False,printLog=False):
 
-    def scanHandle(procPool,msgQueue,resourcePath,extractRC4Key,globalStates):
+def _scanAPICloudApks(procPool, msgQueue, extractHandle,
+                        resourcePath, extractRC4Key=False, printLog=False):
+
+    def scanHandle(procPool,msgQueue, extractHandle, resourcePath,extractRC4Key,globalStates):
         for root, dirs, files in os.walk(resourcePath):
             for f in files:
-                procPool.apply_async(extractAPICloudApkInfo,args=('{}/{}'.format(root,f),extractRC4Key,msgQueue)) 
+                procPool.apply_async(extractHandle, args=('{}/{}'.format(root, f), extractRC4Key, msgQueue))
                 globalStates['submittedFiles'] += 1
         globalStates['scanComplete'] = True
     
-    globalStates = {'submittedFiles':0,'scanComplete':False,'processedFiles':0}
+    globalStates = {'submittedFiles':0, 'scanComplete':False, 'processedFiles':0}
 
-    scanTh = threading.Thread(target=scanHandle,args=(procPool,msgQueue,resourcePath,extractRC4Key,globalStates))
+    scanTh = threading.Thread(target=scanHandle, args=(procPool, msgQueue, extractHandle,
+                                                      resourcePath, extractRC4Key, globalStates))
     scanTh.start()
     
     apkInfoMap = {}
@@ -106,7 +110,7 @@ def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
  
     totalApks = len(apkInfoMap)
     decApkMap = {}
-    for apkPath,apkInfo in apkInfoMap.items():
+    for apkPath, apkInfo in apkInfoMap.items():
         if printLog:
             print(apkPath)
         saveApkPath = determineSavePath(apkPath,saveTo)
@@ -128,9 +132,10 @@ def extractAPICloudApkInfos(resourcePath,printLog=False):
         return {resourcePath:apicloudInfo} if apicloudInfo else {}
 
     msgQueue = multiprocessing.Manager().Queue(0)
-    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count() ) ) 
+    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count()))
 
-    apkInfoMap = _scanAPICloudApks(procPool,msgQueue,resourcePath,True,printLog=printLog)
+    apkInfoMap = _scanAPICloudApks(procPool, msgQueue, extractAPICloudApkInfo,
+                                   resourcePath, True, printLog=printLog)
     try:
         procPool.close()
         procPool.join()
@@ -147,10 +152,11 @@ def decryptAndExtractAPICloudApkResources(resourcePath,saveTo,printLog=False):
         return {resourcePath:uzm_util.decryptAllResourcesInApkParallel(resourcePath,determineSavePath(resourcePath,saveTo),printLog)} 
 
     msgQueue = multiprocessing.Manager().Queue(0)
-    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count() ) ) 
+    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count()))
     
     startTime = time.time()
-    apkInfoMap = _scanAPICloudApks(procPool,msgQueue,resourcePath,False,printLog=printLog)
+    apkInfoMap = _scanAPICloudApks(procPool, msgQueue, extractAPICloudApkInfo,
+                                   resourcePath, False, printLog=printLog)
     scanCost = time.time()-startTime
     if not apkInfoMap:
         if printLog:
@@ -162,7 +168,7 @@ def decryptAndExtractAPICloudApkResources(resourcePath,saveTo,printLog=False):
     
     if len(apkInfoMap)<2:
         apkFile = list(apkInfoMap.keys())[0]
-        decryptMap = {apkFile:(determineSavePath(apkFile,saveTo),uzm_util.decryptAllResourcesInApkParallel(apkFile,saveTo,printLog,procPool,msgQueue))} 
+        decryptMap = {apkFile:(determineSavePath(apkFile,saveTo), uzm_util.decryptAllResourcesInApkParallel(apkFile,saveTo,printLog,procPool,msgQueue))}
     else:
         decryptMap = _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog)
 
@@ -170,5 +176,62 @@ def decryptAndExtractAPICloudApkResources(resourcePath,saveTo,printLog=False):
         procPool.close()
         procPool.join()
     except:pass
-
     return decryptMap
+
+
+def extractAPICloudApkInfoEmu(resourcePath, extractRC4Key=False, msgQueue=None,isDefaultApk=False):
+    apicloudInfo = None
+    try:
+        apicloudInfo = apk_util.extractAPICloudInfo(resourcePath, isDefaultApk)
+    except:
+        print('error while extracting apk info from {}'.format(resourcePath))
+        traceback.print_exc()
+
+    if apicloudInfo and extractRC4Key:
+        apicloudInfo['encrypted'] = uzm_emu_util.isResourceEncrypted(resourcePath)
+        apicloudInfo['resKey'] = uzm_emu_util.extractRC4KeyFromApk(resourcePath)
+        apicloudInfo['rc4_encrypted'] = True if apicloudInfo['resKey'] else False
+        if apicloudInfo['encrypted'] and not apicloudInfo['resKey']:
+            apicloudInfo['rc4_encrypted'] = uzm_emu_util.isApkResourceEncryptedByRC4(resourcePath)
+    if msgQueue:
+        msgQueue.put_nowait((resourcePath, apicloudInfo))
+    return resourcePath, apicloudInfo
+
+
+def _scanAPICloudApksEmu(resourcePath, printLog=False):
+    if not os.path.isdir(resourcePath):
+        return {resourcePath: extractAPICloudApkInfoEmu(resourcePath)}
+
+    procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count()))
+    msgQueue = multiprocessing.Manager().Queue(0)
+    apkInfoMap = _scanAPICloudApks(procPool, msgQueue, extractAPICloudApkInfoEmu,
+                                   resourcePath, False, printLog=printLog)
+    try:
+        procPool.close()
+        procPool.join()
+    except:pass
+    return apkInfoMap
+
+
+def _decryptAPICloudApksEmu(apkInfoMap,saveTo):
+    decApkMap = {}
+    for apkPath, apkInfo in apkInfoMap.items():
+        print(apkPath)
+        saveApkPath = determineSavePath(apkPath, saveTo)
+        decMap = uzm_emu_util.decryptAllResourcesInApk(apkPath, saveApkPath)
+        decApkMap[apkPath] = (saveApkPath, decMap)
+        print('\t=>{}'.format(saveApkPath))
+        print('\t{} files decrypted.'.format(len(decMap)))
+        print('\n')
+    return decApkMap
+
+
+def decryptAndExtractAPICloudApkResourcesEmu(resourcePath, saveTo):
+    startTime = time.time()
+    apkInfoMap = _scanAPICloudApksEmu(resourcePath)
+    scanCost = time.time()-startTime
+    if not apkInfoMap:
+        print('no apicloud apk found')
+        return {}
+    print('{} seconds elapsed.  {} apks found'.format(scanCost, len(apkInfoMap)))
+    return _decryptAPICloudApksEmu(apkInfoMap, saveTo)

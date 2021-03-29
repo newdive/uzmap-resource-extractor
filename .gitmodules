@@ -1,0 +1,3 @@
+[submodule "emu_support/AndroidNativeEmu"]
+	path = emu_support/AndroidNativeEmu
+	url = https://github.com/AeonLucid/AndroidNativeEmu.git
