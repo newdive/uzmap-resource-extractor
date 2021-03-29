@@ -10,10 +10,12 @@
 <br>如果后续的加密方式有修改而导致不适用，可以提issue，也特别欢迎各位有志之士添砖加瓦
 <br>这个工具仅供个人研究学习使用。 其它非法用途所造成的法律责任，一律与本项目无关。
 ### Note ###
-  ```master```分支支持 ```python3.x```<br>
-  ```python2```分支支持 ```python2.7```<br>
+> **接入 [AndroidNativeEmu](https://github.com/AeonLucid/AndroidNativeEmu/) ，探索并尝试新的解密思路** <br>
 
-  请根据具体python版本选择相应分支
+- ```master```分支支持 ```python3.x```<br>
+- ```emu_support```分支支持 **AndroidNativeEmu 解密方式** <br>
+- ```python2```分支支持 ```python2.7```<br>
+请根据具体需要选择相应分支
 
 ### Setup ###
 先安装项目的依赖
