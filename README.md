@@ -9,15 +9,24 @@
 <br>项目的 [resources](https://github.com/newdive/resources) 文件夹中附带了apk和libsec.so的文件样本，供参考分析。 
 <br>如果后续的加密方式有修改而导致不适用，可以提issue，也特别欢迎各位有志之士添砖加瓦
 <br>这个工具仅供个人研究学习使用。 其它非法用途所造成的法律责任，一律与本项目无关。
-### Note ###
-  ```master```分支支持 ```python3.x```<br>
-  ```python2```分支支持 ```python2.7```<br>
 
-  请根据具体python版本选择相应分支
+### Note ###
+  这个分支的目的
+
+  1、可以作为 AndroidNativeEmu 的一个应用案例， 方便学习研究
+
+  2、可以避开解密算法细节，具有更广的适用范围。(当然会有一定效率上的牺牲)
 
 ### Setup ###
 先安装项目的依赖
 ```
+pip install -r requirements.txt
+```
+
+由于依赖 AndroidNativeEmu 项目, 需要安装相关的依赖
+```
+cd emu_support/AndroidNativeEmu
+
 pip install -r requirements.txt
 ```
 
