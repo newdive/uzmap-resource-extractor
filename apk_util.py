@@ -28,11 +28,13 @@ import struct
 import zipfile
 import traceback
 import codecs
+from asn1crypto import cms
 
 APK_MANIFEST = 'AndroidManifest.xml'
 
 APICLOUD_MANIFEST_APPNAME = 'com.uzmap.pkg.uzapp.UZApplication'
 APICLOUD_MANIFEST_APPVERSION = 'uz_version'
+APICLOUD_JNI_INTERFACE = 'com/uzmap/pkg/uzcore/external/Enslecb'
 
 APK_MANIFEST_STARTTAG_BYTES = b'\x02\x01\x10\x00'
 DEXHEAD_MAGICS = [b'\x64\x65\x78\x0A\x30\x33',\
@@ -282,13 +284,28 @@ def extractAttributes(fileBytes,onlySimpleAttr=True):
 
     return tagAttrs
 
+
+def containsAPICloudJniInterface(apkArc):
+    global APICLOUD_JNI_INTERFACE
+    nameBytes = APICLOUD_JNI_INTERFACE if isinstance(APICLOUD_JNI_INTERFACE, bytes) else APICLOUD_JNI_INTERFACE.encode('utf-8')
+    soFiles = []
+    for zName in apkArc.namelist():
+        if not (zName.startswith('lib/') and zName.endswith('libsec.so')):
+            continue
+        soFiles.append(zName)
+    if not soFiles:
+        return False
+    with apkArc.open(soFiles[0], 'r') as soFile:
+        soContent = soFile.read()
+        return nameBytes in soContent
+
 def extractAPICloudInfo(filePath,isDefaultApk=False):
     global APK_MANIFEST,APICLOUD_MANIFEST_APPNAME,APICLOUD_MANIFEST_APPVERSION
     isApk = isPossibleApkFile(filePath) if not isDefaultApk else True
     if not isApk:
         return None
     try:
-        uzAppInfo = None
+        uzAppInfo, uzApplicationName = None, None
         if not zipfile.is_zipfile(filePath):
             return uzAppInfo
         with zipfile.ZipFile(filePath,'r') as apkArc:
@@ -304,10 +321,18 @@ def extractAPICloudInfo(filePath,isDefaultApk=False):
                     elif tagName=='meta-data' and APICLOUD_MANIFEST_APPVERSION in attrs:
                         versionAttrs = attrs
 
-                if applicationName==APICLOUD_MANIFEST_APPNAME and versionAttrs:
-                    uzAppInfo = {}
+                if versionAttrs:
+                    uzAppInfo = {'isPacked':False}
                     uzAppInfo.update(manifest)
                     uzAppInfo.update(versionAttrs)
+                    uzApplicationName = applicationName
+            # very likely to be packed by some secure packer
+            if uzAppInfo and uzApplicationName!=APICLOUD_MANIFEST_APPNAME:
+                # make sure it is apicloud
+                if containsAPICloudJniInterface(apkArc):
+                    uzAppInfo['isPacked'] = True
+                else:
+                    uzAppInfo = None
 
         return uzAppInfo
     except:
@@ -321,3 +346,27 @@ def isPossibleAPICloudApk(filePath,isDefaultApk=False):
     return False
 
 
+def extractAllApkSignatureBytes(apkFilePath):
+    if not os.path.exists(apkFilePath):
+        return None
+    sigBytesArr = []
+    with zipfile.ZipFile(apkFilePath,'r') as apkArc:
+        for zipInfo in apkArc.infolist():
+            zipFileName = zipInfo.filename.lower()
+            #print('check zipEntry:',zipFileName)
+            if not zipFileName.startswith('meta-inf/') or \
+                not ( zipFileName.endswith('.rsa') or zipFileName.endswith('.dsa')):
+                    continue
+            try:
+                with apkArc.open(zipInfo.filename,'r') as apkEntry:
+                    p = cms.ContentInfo.load(apkEntry.read())
+                    for c in p['content']['certificates']:
+                        certBytes = c.contents
+                        if isinstance(certBytes, type('')):
+                            certBytes = bytes(certBytes)
+                        sigBytesArr.append(certBytes)
+            except:
+                print('fail to parse certificate from zipEntry:',zipInfo.filename)
+                traceback.print_exc()
+    
+    return sigBytesArr

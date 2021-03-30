@@ -36,7 +36,102 @@ CRYPTODOME_ARC4 = None
 try:
     CRYPTODOME_ARC4 = importlib.import_module('Crypto.Cipher.ARC4')
 except:pass
-def extractRC4Key(soFile):
+
+# rc4 initial state for uz_version < 1.2.0
+mrc4_initial_states = [239, 157, 102, 150, 29, 86, 207, 230, 165, 46, 102, 181, 75, 90, 17, 62, 153, 44, 78, 204]
+
+hexBytesSet = set([ord(a) for a in '0123456789abcdefABCDEF'])
+def isHexStrBytes(targetBytes):
+    global hexBytesSet
+    for a in targetBytes:
+        if ord(a) not in hexBytesSet:
+            return False
+    return True
+
+'''
+hex区块由连续4个长度为9的字节构成
+每块字节都是 8个 0-f 的字符 加上一个 0x00 字节结尾
+'''
+def findLegalHexStrBlock(byteSource,endIdx):
+    startIdx = endIdx - 9*4
+    while startIdx>=0:
+        foundMatch,unMatchSkip = True, 1
+        for i in range(4):
+            byteBlock = byteSource[startIdx+i*9: startIdx+i*9+9]
+            if ord(byteBlock[-1])!=0 or not isHexStrBytes(byteBlock[0:8]):
+                foundMatch = False
+                if i>0:
+                    unMatchSkip = (4-i)*9
+                break
+        if foundMatch:
+            return startIdx, startIdx+9*4
+        startIdx = startIdx - unMatchSkip
+    return -1,-1
+
+# keyIdx的长度为0x14*4  每个idx对应的值的范围是 [0,0x20)
+#旧版本中有的keyIdx的位置略有变化  可以通过遍历尝试的方法来检测
+def findBestMatchKeyIdx(dataContent, keyStr, keyStartIdx, rawEncryptedContent, keyLen=0x14, littleEndian=True):
+    if not rawEncryptedContent:
+        return None
+    dFmt = '<I' if littleEndian else '>I'
+    tKeyIdx,dIdx = [], 0
+    rawEntropyValue = entropy.calculateEntropy(rawEncryptedContent)
+    while dIdx<keyStartIdx:
+        if len(tKeyIdx)>0:
+            tKeyIdx.pop(0)
+        while dIdx<keyStartIdx and len(tKeyIdx)<keyLen:
+            idxVal = struct.unpack(dFmt,dataContent[dIdx:dIdx+4])[0]
+            if idxVal>0x20 or idxVal<0:
+                tKeyIdx.clear()
+                dIdx += 4
+                break
+            tKeyIdx.append(idxVal)
+            dIdx += 4
+        if len(tKeyIdx)==keyLen:
+            encKey = ''.join([keyStr[idx] for idx in tKeyIdx]) 
+            decBytes = decrypt(rawEncryptedContent, encKey)
+            entropyValue = entropy.calculateEntropy(decBytes)
+            #print(tKeyIdx,len(decBytes), rawEntropyValue, '=>', entropyValue )
+            if entropyValue<0.7:
+                return tKeyIdx
+    return None
+
+digitLetters = set([ord(a) for a in '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'])
+def extractAsciiStrings(dataContent):
+    global digitLetters
+    lStrings,strStart = [], 0
+    for i in range(len(dataContent)):
+        a = ord(dataContent[i])
+        if a == 0:
+            if strStart<i:
+                lStrings.append(dataContent[strStart : i].decode('utf-8'))
+            strStart = i+1
+        elif a not in digitLetters:
+            strStart = i+1
+
+    return lStrings
+
+# part of rc4 key for version before 1.2.0
+def findEnslecbocKey(dataContent):
+    lStrings = extractAsciiStrings(dataContent)
+    str10Counts = {}
+    for lStr in lStrings:
+        if len(lStr)==10 or len(lStr)==20:
+            tStr = lStr[0:10]
+            if not tStr in str10Counts:
+                str10Counts[tStr] = 0
+            str10Counts[tStr] += 1
+    candidates = []
+    for lStr,c in str10Counts.items():
+        if c<2:
+            continue
+        candidates.append(lStr)
+    if len(candidates)>1:
+        print('found {} possible candidates'.format(len(candidates)))
+    return candidates[0] if len(candidates)==1 else None
+
+
+def extractRC4Key(soFile, encContentSample=None):
     global JNI_PACKAGE_BYTES
     keyStr,keyIdx = None,None
     if isinstance(soFile,str):
@@ -51,8 +146,14 @@ def extractRC4Key(soFile):
         if dataContent and dataContent.find(JNI_PACKAGE_BYTES)>=80+9*4:
             pkgIdx = dataContent.find(JNI_PACKAGE_BYTES)
             #little endian bytes
-            keyIdx = [struct.unpack('<I' if littleEndian else '>I',dataContent[i:i+4])[0] for i in range(0,20*4,4)]
-            keyStr = dataContent[pkgIdx-9*4:pkgIdx].replace(b'\x00',b'').decode('utf-8')
+            blockStart,blockEnd = findLegalHexStrBlock(dataContent,pkgIdx)
+            if blockStart>-1 and blockEnd>-1:
+                keyStr = dataContent[blockStart:blockEnd].replace(b'\x00',b'').decode('utf-8')
+                if blockEnd == pkgIdx:
+                    dFmt = '<I' if littleEndian else '>I'
+                    keyIdx = [struct.unpack(dFmt, dataContent[i:i+4])[0] for i in range(0,20*4,4)]
+                else:  #旧版本的没有libsec中位置略有变化  
+                    keyIdx = findBestMatchKeyIdx(dataContent,keyStr, blockStart, encContentSample ,littleEndian=littleEndian)
     #print(keyIdx)
     #print(keyStr)
     return ''.join([keyStr[idx] for idx in keyIdx]) if keyStr else None
@@ -60,48 +161,40 @@ def extractRC4Key(soFile):
 def getPreKey(rawKey,keyIdxArr):
     return ''.join([rawKey[idx] for idx in keyIdxArr])
 
-def computeRC4KeyMap(rc4Key):
+def computeRC4KeyState(rc4Key, initialState=None):
     preKey = rc4Key
     if rc4Key is None or isinstance(rc4Key,tuple):
         preKey = getPreKey(rc4Key[0] if rc4Key else None,rc4Key[1] if rc4Key else None)
-    blockA = [ord(a) for a in ( preKey*( int(math.ceil(256.0/len(preKey))) ) )[0:256]]
-    blockB = [i for i in range(256)]
-    reg2 = 0
-    for i in range(256):
-        reg3 = blockB[i]
-        reg2 += blockA[i] + blockB[i]
-        reg6 = (((reg2>>0x1F) >> 0x18) + reg2) & 0xFFFFFF00
-        reg2 -= reg6
-        blockB[i] = blockB[reg2]
-        blockB[reg2] = reg3
+    stateSize = len(initialState) if initialState else 256
+    keyLen = len(preKey)
+    blockA = [ord(preKey[i%keyLen]) for i in range(stateSize)]
+    blockB = [a for a in initialState] if initialState else [i for i in range(stateSize)]
+    si = 0
+    for i in range(stateSize):
+        si = (si + blockA[i] + blockB[i]) % stateSize
+        blockB[i], blockB[si] = blockB[si], blockB[i]
     return blockB
 
-def decrypt(dataBytes,rc4Key):
+def decrypt(dataBytes,rc4Key, initialState=None):
     #use pycryptodome library to speed up decryption
     ''''''
     global CRYPTODOME_ARC4
-    if CRYPTODOME_ARC4:
+    if not initialState and CRYPTODOME_ARC4:
         # Object type <type 'unicode'> cannot be passed to C code
         rc4Instance = CRYPTODOME_ARC4.new(rc4Key.encode('utf-8') if isinstance(rc4Key,unicode) else rc4Key)
         return rc4Instance.decrypt(dataBytes)
     
-    decDataBytes = [ord(b) for b in dataBytes]
-    keyMap = computeRC4KeyMap(rc4Key)
+    decDataBytes = [0] * len(dataBytes)
+    keyState = computeRC4KeyState(rc4Key,initialState=initialState)
+    stateSize = len(keyState)
     R3,R4 = 0, 0
-    for i in range(len(decDataBytes)):
-        R3 += 1
-        R5 = ((R3>>0x1f)>>0x18)
-        R6 = (R3 + R5 )& 0xFFFFFF00
-        R3 -= R6
-        R6 = keyMap[R3]
-        R4 = R4 + R6
-        R5 = (((R4>>0x1f)>>0x18) + R4) & 0xFFFFFF00
-        R4 = R4 - R5
-        keyMap[R3] = keyMap[R4]
-        keyMap[R4] = R6
-        R5 = (keyMap[R3] + R6) & 0xFF
-        decDataBytes[i] ^= keyMap[R5]
-    
+    for i in range(len(dataBytes)):
+        R3 = (R3 + 1) % stateSize
+        R4 = (R4 + keyState[R3]) % stateSize
+        keyState[R3], keyState[R4] = keyState[R4], keyState[R3] 
+        sIdx = (keyState[R3] + (keyState[R4] % stateSize)) % stateSize
+        decDataBytes[i] ^= (ord(dataBytes[i]) ^ keyState[sIdx]) & 0xFF
+
     return bytes(bytearray(decDataBytes)) if isinstance(dataBytes,bytes) else bytearray(decDataBytes) if isinstance(dataBytes,bytearray) else decDataBytes
 
 '''
@@ -176,7 +269,14 @@ def extractRC4KeyFromApk(apkFilePath):
                         shutil.copyfileobj(soContent,soTmpC)
                     soContent.close()
                     soContent = open(soTmp[1],'rb')
-                rc4Key = extractRC4Key(soContent)
+                
+                encSampleBytes = None
+                if isResourceEncrypted(apkFilePath):
+                    minAssetName, maxAssetName = findSmallestAndBiggestEncryptedAsset(apkFilePath)
+                    if minAssetName:
+                        with apkFile.open(minAssetName,'r') as encAsset:
+                            encSampleBytes = encAsset.read()
+                rc4Key = extractRC4Key(soContent, encContentSample=encSampleBytes)
                 if soTmp:
                     os.close(soTmp[0])
                     os.remove(soTmp[1])
@@ -193,6 +293,24 @@ def iterateAllNeedDecryptAssets(apkFilePath):
             if resName.startswith('assets/widget/'):
                 if needDecryptFile(resName):
                     yield resName,apkFile.open(resName)
+
+def findSmallestAndBiggestEncryptedAsset(apkFilePath):
+    if not os.path.exists(apkFilePath):
+        print('{} does not exists'.format(apkFilePath))
+        return None, None
+    minSize, maxSize = 1<<32, -1
+    minInfoName, maxInfoName = None, None
+    with zipfile.ZipFile(apkFilePath) as apkFile:
+        for zInfo in apkFile.infolist():
+            if not needDecryptFile(zInfo.filename):
+                continue
+            if zInfo.file_size<minSize:
+                minSize = zInfo.file_size
+                minInfoName = zInfo.filename
+            if zInfo.file_size>maxSize:
+                maxSize = zInfo.file_size
+                maxInfoName = zInfo.filename
+    return minInfoName, maxInfoName
 
 def isResourceEncrypted(apkFilePath):
     '''

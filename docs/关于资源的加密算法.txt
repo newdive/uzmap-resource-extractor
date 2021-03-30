@@ -1,0 +1,47 @@
+从已知的分析来看, apicloud使用的加密算法是RC4, 而且密钥的长度为 20
+只不过在不同版本中使用的RC4算法略有不同
+    descriptor属性为 "sdk" 或者 uz_version在 1.2.0以后的(包括1.2.0) 使用 com.uzmap.pkg.uzcore.external.Enslecb.ohs方法进行解密
+        这个方法在目前的分析来看使用的都是通用的RC4算法
+    没有uz_version属性 或者 uz_version 在 1.2.0 以前的 则使用变种的RC4算法  这个算法定义在java层 而不是在jni层
+        这个RC4的state大小只有20字节(通用的RC4的state大小由256字节)
+    
+    关于这个的判断逻辑可以参考下边的代码逻辑(属性k为true 则调用ohs方法解密, 否则使用变种的rc4算法解密)
+    if ("sdk".equals(b.q())) {    // 这里对应的是 compile.Properties.descriptor 方法的返回值
+        k = true;
+        return;
+    }
+    String v = this.v.metaData.getString("uz_version");
+    if (!TextUtils.isEmpty(v)) {
+        String[] vs = v.split("\\.");
+        if (vs != null && vs.length >= 3) {
+            String v1 = vs[0];
+            String v2 = vs[1];
+            int ver1 = Integer.valueOf(v1).intValue();
+            int ver2 = Integer.valueOf(v2).intValue();
+            if ((ver1 == 1 && ver2 >= 2) || ver1 > 1) {   // uz_version>=1.2.x 则 i.k = True
+                k = true;
+            }
+        }
+    }
+
+    当然这里 ohs 的实现逻辑不一定是rc4算法  
+    保险的话可以考虑通过 unicorn/AndroidNativeEmu/Unidbg 之类的工具来直接调用得到解密结果
+    
+    对于变种的rc4算法，密钥则来源于 Enslecb.oc 方法  和 compile.Properties.cloudKey
+    密钥具体构造如下
+        1、提取compile.Properties.cloudKey 中的10个字符
+            如果 cloudKey 长度为10 则直接返回 ; 否则 每4个字符取前两个字符拼接成长度为10的字符串
+        2、Enslecb.oc() + 第1步中的字符串
+    
+    对于上述的两种解密方法都涉及到对 jni的调用  而且jni里边有对apk签名的校验 
+        签名的校验过程是：
+            先对apk的签名字节进行rc4加密
+            接着对加密的apk签名字节进行base64编码，
+            然后对 base64字符串进行 md5 得到长度为 32 的 hex字符串
+            最后将这个字符串与jni中的字符串常量进行比对, 相等则通过校验, 否则校验失败
+        apk签名串的初始化过程在 Enslecb.sm 中调用  这个方法会在application的onCreate方法中先调用
+        所以如果使用 AndroidNativeEmu之类的工具的话需要先手动调用 Enslecb.sm 方法, 传入apk对应的签名字节 
+        保证后续的调用能通过校验
+   
+    
+
