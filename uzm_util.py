@@ -386,15 +386,18 @@ def iterateAllNeedDecryptAssets(apkFilePath):
                 continue
             yield resName,apkFile.open(resName)
 
+
 def findSmallestAndBiggestEncryptedAsset(apkFilePath):
     if not os.path.exists(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
         return None, None
-    minSize, maxSize = 1<<32, -1
+    minSize, maxSize = 1<<32,  -1
     minInfoName, maxInfoName = None, None
     with zipfile.ZipFile(apkFilePath) as apkFile:
         for zInfo in apkFile.infolist():
             if not (zInfo.filename.startswith('assets/widget/') and needDecryptFile(zInfo.filename)):
+                continue
+            if zInfo.file_size<1:
                 continue
             if zInfo.file_size<minSize:
                 minSize = zInfo.file_size

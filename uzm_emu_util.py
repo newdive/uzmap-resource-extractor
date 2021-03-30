@@ -39,13 +39,15 @@ def isResourceEncrypted(apkFilePath):
 
 
 def iterateAllNeedDecryptAssets(apkFilePath, limit=-1, sortKey=None, desc=False,
-                                yieldRawContent=False):
+                                yieldRawContent=False, excludeEmpty=False):
     if not os.path.exists(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
         return
 
     with zipfile.ZipFile(apkFilePath) as apkFile:
         encApkResList = [info for info in apkFile.infolist() if info.filename.startswith('assets/widget/') and needDecryptFile(info.filename)]
+        if excludeEmpty:
+            encApkResList = [info for info in encApkResList if info.file_size>0]
         if sortKey and hasattr(encApkResList[0], sortKey):
             encApkResList = sorted(encApkResList, key=lambda v:getattr(v,sortKey))
             if desc:
@@ -138,7 +140,8 @@ def isApkResourceEncryptedByRC4(apkFilePath):
     ctx = getCachedEmuContextFromApkFile(apkFilePath)
     if ctx is None:
         return False
-    assetBytesArr = list(iterateAllNeedDecryptAssets(apkFilePath, limit=2, sortKey='file_size', yieldRawContent=True))
+    assetBytesArr = list(iterateAllNeedDecryptAssets(apkFilePath, limit=2, sortKey='file_size',
+                                                     yieldRawContent=True, excludeEmpty=True))
     return uzm_emu.isUsingRC4EncryptionFromCtx(ctx, assetBytesArr[0][1], assetBytesArr[1][1])
 
 
@@ -146,7 +149,8 @@ def extractRC4KeyFromApk(apkFilePath):
     ctx = getCachedEmuContextFromApkFile(apkFilePath)
     if ctx is None:
         return None
-    assetBytesArr = list(iterateAllNeedDecryptAssets(apkFilePath, limit=1, sortKey='file_size', yieldRawContent=True))
+    assetBytesArr = list(iterateAllNeedDecryptAssets(apkFilePath, limit=1, sortKey='file_size',
+                                                     yieldRawContent=True, excludeEmpty=True))
     rc4KeyCandidates, decBytes = uzm_emu.tryGetRC4KeyFromCtx(ctx, assetBytesArr[0][1])
     if not rc4KeyCandidates:
         print('No key candidate found duration emulation.Maybe the codeflow is changed!')
@@ -183,7 +187,7 @@ def decryptAllResourcesInApk(apkFilePath, saveTo):
     rc4Key, rc4KeyStream = extractRC4KeyFromApk(apkFilePath), None
     if isRc4Encrypted and not rc4Key:
         assets = list(iterateAllNeedDecryptAssets(apkFilePath, limit=1, sortKey='file_size', desc=True,
-                                             yieldRawContent=True))
+                                             yieldRawContent=True, excludeEmpty=True))
         rc4KeyStream = uzm_emu.getRC4KeyStreamFromCtx(getCachedEmuContextFromApkFile(apkFilePath), assets[0][1])
         print('try use rc4 keyStream to decrypt')
     storeFolder = os.path.dirname(os.path.abspath(apkFilePath))
@@ -234,3 +238,4 @@ def decryptAllResourcesInApk(apkFilePath, saveTo):
         sys.stdout.flush()
 
     return decryptMap
+

@@ -144,7 +144,7 @@ def prepareEmulator(jniClasses):
 
 # enable 'with' syntax
 class UZMEmuContext:
-    def __init__(self, appName, appSignatureBytes, soFile):
+    def __init__(self, appName, appSignatureBytes, soFile, showDetailLog=False):
         self.emulator = prepareEmulator([Enslecb])
         _soTemp = None
         if not isinstance(soFile, str) or not os.path.exists(soFile):
@@ -161,6 +161,14 @@ class UZMEmuContext:
         self.jniInterface = Enslecb()
         self.libcModule = None
         self._jniInited = False
+        self.logger = None
+        if showDetailLog:
+            logging.basicConfig(
+                stream=sys.stdout,
+                level=logging.DEBUG,
+                format="%(asctime)s %(levelname)7s %(name)34s | %(message)s"
+            )
+            self.logger = logging.getLogger(__name__)
 
     def _copySoContent(self, soFile, targetDir):
         _soTemp = tempfile.mkstemp('.tmp.so', 'tmp', targetDir)
@@ -239,6 +247,8 @@ def decryptFromCtx(uzmCtx, encBytes):
     with uzmCtx:
         if isinstance(encBytes, bytes):
             encBytes = bytearray(encBytes)
+        if not encBytes:
+            return b''  # return empty bytes
         ohsResult = uzmCtx.jniInterface.ohs(uzmCtx.emulator, encBytes, 0)
         return bytes(ohsResult)
 
@@ -251,8 +261,11 @@ def callDecryptGenFromCtx(uzmCtx, encBytesIn):
                 break
             if isinstance(encBytes, bytes):
                 encBytes = bytearray(encBytes)
-            ohsResult = uzmCtx.jniInterface.ohs(uzmCtx.emulator, encBytes, 0)
-            yield bytes(ohsResult)
+            if not encBytes:
+                yield b''  # return empty bytes
+            else:
+                ohsResult = uzmCtx.jniInterface.ohs(uzmCtx.emulator, encBytes, 0)
+                yield bytes(ohsResult)
 
 # if encryption algorithm , just call this  treat it as a black box
 # this could be slow  and should only be treated as last resort
@@ -274,6 +287,8 @@ def isUsingRC4EncryptionFromCtx(ctx, encBytesA, encBytesB):
     with ctx:
         decBytesA = ctx.jniInterface.ohs(ctx.emulator, encBytesA if isinstance(encBytesA, bytearray) else bytearray(encBytesA), 0)
         decBytesB = ctx.jniInterface.ohs(ctx.emulator, encBytesB if isinstance(encBytesB, bytearray) else bytearray(encBytesB), 0)
+        if not decBytesA or not decBytesB:
+            return False
         if len(decBytesA) != len(encBytesA) or len(decBytesB) != len(encBytesB):
             return False
         minLen = min(len(decBytesA), len(decBytesB))
