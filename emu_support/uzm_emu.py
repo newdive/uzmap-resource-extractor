@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 from unicorn import UcError, UC_HOOK_MEM_UNMAPPED
 from unicorn.arm_const import *
 import unicorn
@@ -116,7 +117,7 @@ class Enslecb(metaclass=JavaClassDef, jvm_name='com/uzmap/pkg/uzcore/external/En
     def sm(self, mu):
         pass
 
-    # µ÷ÓÃÕâ¸ö·½·¨µÄÊ±ºò µÚ¶ş¸ö²ÎÊı±ØĞë´«null , µ«ÓÉÓÚµ×²ã²»Ö§³ÖNone²ÎÊı, ËùÒÔ´«ËÍ 0 ´ú±ínull
+    # è°ƒç”¨è¿™ä¸ªæ–¹æ³•çš„æ—¶å€™ ç¬¬äºŒä¸ªå‚æ•°å¿…é¡»ä¼ null , ä½†ç”±äºåº•å±‚ä¸æ”¯æŒNoneå‚æ•°, æ‰€ä»¥ä¼ é€ 0 ä»£è¡¨null
     @java_method_def(name='ohs', signature='([BLjava/lang/String;)[B', native=True)
     def ohs(self, mu):
         pass
