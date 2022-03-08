@@ -149,10 +149,12 @@ def extractRC4Key(soFile, encContentSample=None):
         dataSection,dataContent = elffile.get_section_by_name('.rodata'),None
         if dataSection:
             dataContent = dataSection.data()
+        #print('JNI_PACKAGE_BYTES index', dataContent.find(JNI_PACKAGE_BYTES), dataContent[0:256])
         if dataContent and dataContent.find(JNI_PACKAGE_BYTES)>=80+9*4:
             pkgIdx = dataContent.find(JNI_PACKAGE_BYTES)
             #little endian bytes
             blockStart,blockEnd = findLegalHexStrBlock(dataContent,pkgIdx)
+            #print('findLegalHexStrBlock', pkgIdx, blockStart,blockEnd)
             if blockStart>-1 and blockEnd>-1:
                 keyStr = dataContent[blockStart:blockEnd].replace(b'\x00',b'').decode('utf-8')
                 if blockEnd == pkgIdx:
@@ -363,6 +365,7 @@ def extractRC4KeyFromApk(apkFilePath):
             print('libsec.so file not exists in apk file')
             return None
         for soFile in soFiles:
+            #print('try with soFile:', soFile)
             with apkFile.open(soFile,'r') as soContent:
                 with SeekableZipContent(soContent, apkFilePath) as seekableSo:
                     encSampleBytes = None
@@ -372,7 +375,8 @@ def extractRC4KeyFromApk(apkFilePath):
                             with apkFile.open(minAssetName,'r') as encAsset:
                                 encSampleBytes = encAsset.read()
                     rc4Key = extractRC4Key(seekableSo, encContentSample=encSampleBytes)
-                return rc4Key
+                if rc4Key:
+                    return rc4Key
     return None
 
 def iterateAllNeedDecryptAssets(apkFilePath):
