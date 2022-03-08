@@ -37,7 +37,10 @@ if __name__ == '__main__':
         sys.exit()
 
     if options.viewInfo:
-        apkInfos = tools.extractAPICloudApkInfos(args[0],True)
+        if options.emuMode:
+            apkInfos = tools.extractAPICloudApkInfosEmu(args[0],True)
+        else:
+            apkInfos = tools.extractAPICloudApkInfos(args[0],True)
         for apk,apkInfo in apkInfos.items():
             print(apk)
             print('\tpackage      : {}\n\tuz_version   : {}\n\tencrypted    : {}\n\trc4Key       : {}\n'.format(apkInfo['package'], \

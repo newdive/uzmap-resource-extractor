@@ -126,14 +126,14 @@ def _decryptAPICloudApks(procPool,msgQueue,apkInfoMap,saveTo,printLog=False):
 resourcePath 可以是apk的路径， 也可以apk所在的目录
 如果是目录，则会扫描所有可能的apicloud apk，并进行信息的提取
 '''
-def extractAPICloudApkInfos(resourcePath,printLog=False):
+def extractAPICloudApkInfos(resourcePath, printLog=False):
     if not os.path.isdir(resourcePath):
         _,apicloudInfo = extractAPICloudApkInfo(resourcePath,True)
         return {resourcePath:apicloudInfo} if apicloudInfo else {}
 
     msgQueue = multiprocessing.Manager().Queue(0)
     procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count()))
-
+    
     apkInfoMap = _scanAPICloudApks(procPool, msgQueue, extractAPICloudApkInfo,
                                    resourcePath, True, printLog=printLog)
     try:
@@ -142,6 +142,8 @@ def extractAPICloudApkInfos(resourcePath,printLog=False):
     except:pass
 
     return apkInfoMap
+
+
 '''
 resourcePath 可以是apk的路径， 也可以apk所在的目录
 如果是目录，则会自动扫描并解密所有的apk, 解密后存放到 saveTo/apkName/
@@ -198,12 +200,14 @@ def extractAPICloudApkInfoEmu(resourcePath, extractRC4Key=False, msgQueue=None,i
     return resourcePath, apicloudInfo
 
 
-def _scanAPICloudApksEmu(resourcePath, printLog=False):
+def extractAPICloudApkInfosEmu(resourcePath, printLog=False):
     if not os.path.isdir(resourcePath):
-        return {resourcePath: extractAPICloudApkInfoEmu(resourcePath)}
+        _,apicloudInfo = extractAPICloudApkInfoEmu(resourcePath,True)
+        return {resourcePath:apicloudInfo} if apicloudInfo else {}
 
     procPool = multiprocessing.Pool(processes=max(2, multiprocessing.cpu_count()))
     msgQueue = multiprocessing.Manager().Queue(0)
+
     apkInfoMap = _scanAPICloudApks(procPool, msgQueue, extractAPICloudApkInfoEmu,
                                    resourcePath, False, printLog=printLog)
     try:
@@ -228,7 +232,7 @@ def _decryptAPICloudApksEmu(apkInfoMap,saveTo):
 
 def decryptAndExtractAPICloudApkResourcesEmu(resourcePath, saveTo):
     startTime = time.time()
-    apkInfoMap = _scanAPICloudApksEmu(resourcePath)
+    apkInfoMap = extractAPICloudApkInfosEmu(resourcePath)
     scanCost = time.time()-startTime
     if not apkInfoMap:
         print('no apicloud apk found')
