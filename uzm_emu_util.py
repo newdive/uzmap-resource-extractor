@@ -11,7 +11,8 @@ import threading
 import apk_util
 import dex_util
 import file_util
-
+from elftools.elf.elffile import ELFFile
+import io
 
 enc_exts = ['js','html','css']
 def needDecryptFile(fileName):
@@ -88,7 +89,10 @@ def isOlderVersion(apkFilePath, appInfo=None):
     vParts = [int(a) for a in versionStr.split('.')]
     return not ((vParts[0] == 1 and vParts[1] >= 2) or vParts[0] > 1)
 
-
+'''
+choose smaller elfclass first
+androidnativeemu has some problem when working with arm64-v8a
+'''
 def readLibSecSoContent(apkFilePath):
     soContentArr = []
     with zipfile.ZipFile(apkFilePath) as apkFile:
@@ -101,9 +105,12 @@ def readLibSecSoContent(apkFilePath):
                 elfHeader = soContent[0:6]
                 #check elffile format(https://en.wikipedia.org/wiki/Executable_and_Linkable_Format)
                 if elfHeader[1] == ord('E') and elfHeader[2] == ord('L') and elfHeader[3] == ord('F'):
-                    soContentArr.append(soContent)
+                    elfFile = ELFFile(io.BytesIO(soContent))
+                    soContentArr.append((elfFile.elfclass,  soContent))
+        if len(soContentArr)>1:
+            soContentArr = sorted(soContentArr, key=lambda kv: kv[0])
 
-    return soContentArr[0] if len(soContentArr)>0 else None
+    return soContentArr[0][1] if len(soContentArr)>0 else None
 
 
 def readInfoForEmuFromApk(apkFilePath):
