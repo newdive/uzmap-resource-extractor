@@ -280,7 +280,8 @@ def extractRC4KeyFromApk(apkFilePath):
                 if soTmp:
                     os.close(soTmp[0])
                     os.remove(soTmp[1])
-                return rc4Key
+                if rc4Key:
+                    return rc4Key
     return None
 
 def iterateAllNeedDecryptAssets(apkFilePath):
