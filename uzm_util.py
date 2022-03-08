@@ -372,7 +372,8 @@ def extractRC4KeyFromApk(apkFilePath):
                             with apkFile.open(minAssetName,'r') as encAsset:
                                 encSampleBytes = encAsset.read()
                     rc4Key = extractRC4Key(seekableSo, encContentSample=encSampleBytes)
-                return rc4Key
+                if rc4Key:
+                    return rc4Key
     return None
 
 def iterateAllNeedDecryptAssets(apkFilePath):
