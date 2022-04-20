@@ -349,7 +349,7 @@ def extractRC4KeyFromApk(apkFilePath):
         print('{} does not exists'.format(apkFilePath))
         return None
     if isOlderVersion(apkFilePath):
-        return extractRC4KeyForOlderVersion(apkFilePath)
+        return extractRC4KeyForOlderVersionFromApk(apkFilePath)
     
     with zipfile.ZipFile(apkFilePath) as apkFile:
         apkResList = apkFile.namelist()
