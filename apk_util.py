@@ -209,7 +209,7 @@ def extractStringList(fileBytes,fOffset):
     stylesOffset = struct.unpack('<I',fileBytes[fOffset+(6<<2):fOffset+(6<<2)+4])[0]
     if stylesOffset!=0:
         stylesOffset += fOffset
-    stringSize = chunkSize-stringsOffset if stylesOffset==0 else stylesOffset-stringsOffset
+    stringSize = chunkSize+fOffset-stringsOffset if stylesOffset==0 else stylesOffset-stringsOffset
     #print(chunkSize,flags,stringCount,stringsOffset,stylesOffset,stringSize)
     rawStringDataBlock = fileBytes[stringsOffset : stringsOffset+stringSize]
     #print(rawStringDataBlock)
