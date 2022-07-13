@@ -358,7 +358,7 @@ def extractAllApkSignatureBytes(apkFilePath):
                 with apkArc.open(zipInfo.filename,'r') as apkEntry:
                     p = cms.ContentInfo.load(apkEntry.read())
                     for c in p['content']['certificates']:
-                        certBytes = c.contents
+                        certBytes = c.dump()  # c.contents  after 1.0.0 use c._contents
                         if isinstance(certBytes, type('')):
                             certBytes = bytes(certBytes)
                         sigBytesArr.append(certBytes)
